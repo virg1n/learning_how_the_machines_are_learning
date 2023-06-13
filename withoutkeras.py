@@ -8,15 +8,6 @@ import random
 x_train, y_train = datasetForTrain[0], datasetForTrain[1]
 x_test, y_test = datasetForTest[0], datasetForTest[1]
 
-# print(y_test[0])
-# print(y_test[1])
-# print(y_test[2])
-# print(y_test[-1])
-# 7
-# 2
-# 1
-# 6
-
 x_train = x_train / 255
 x_test = x_test / 255
 
@@ -74,8 +65,6 @@ W1 = np.random.randn(INPUT_DIM, SECOND_DIM)
 b1 = np.random.randn(1, SECOND_DIM)
 W2 = np.random.randn(SECOND_DIM, OUTPUT_DIM)
 b2 = np.random.randn(1, OUTPUT_DIM)
-# x_train[0][27][27]
-# W1 [783][127]
 
 for j in range(EPOCH):
     print("EPOCH NUMBER " + str(j))
@@ -88,7 +77,6 @@ for j in range(EPOCH):
         t2 = h1 @ W2 + b2
         z = softmax(t2)
         E = categorical_crossentropy(z, y_train_cat[i])
-        # E = tf.keras.losses.categorical_crossentropy(y_train_cat[i], z)
         # Backward
 
         dE_dt2 = z - y_train_cat[i]
