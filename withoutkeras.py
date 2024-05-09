@@ -1,5 +1,4 @@
 from tensorflow.keras.datasets import mnist
-import tensorflow as tf
 import matplotlib.pyplot as plt
 import numpy as np
 import random
@@ -54,7 +53,7 @@ def softmax(t):
     return out/np.sum(out)
 
 def categorical_crossentropy(z, y):
-    # return tf.keras.losses.categorical_crossentropy(y, z)
+
     return -np.sum(y*np.log(z))
 
 
