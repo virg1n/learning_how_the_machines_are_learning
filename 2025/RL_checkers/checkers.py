@@ -19,11 +19,19 @@ class Checkers:
     def show(self):
         print(self.board)
 
-    def GetPossibleMovesForPawn(self, x, y, turn=None):
+    def movePawn(self, y_prev, x_prev , y, x, turn = None):
+        if turn is None:
+            turn = self.turn
+
+        self.board[y_prev][x_prev] = "_"
+        self.board[y][x] = turn
+
+    def GetPossibleMovesForPawn(self, y, x, turn=None):
         if turn is None:
             turn = self.turn
 
         if self.board[y][x] != turn:
+            print(123)
             return []
 
         if turn == "w":
@@ -31,20 +39,20 @@ class Checkers:
         else:
             symb = 1
         
-        moves = self.CanEatForPawn(x, y, turn)
+        moves = self.CanEatForPawn(y, x, turn)
         if not moves:
             if (y == 1 and turn == "w") or (y == 8 and turn == "b"):
                 return None  # todo: implement king moves
 
             if InRange(x+1, y+symb) and self.board[y+symb][x+1] == "_":
-                moves.append([x+1, y+symb])
+                moves.append([y+symb, x+1])
 
             if InRange(x-1, y+symb) and self.board[y+symb][x-1] == "_":
-                moves.append([x-1, y+symb])
+                moves.append([y+symb, x-1])
 
         return moves
 
-    def CanEatForPawn(self, x, y, turn=None):
+    def CanEatForPawn(self, y, x, turn=None):
         if turn is None:
             turn = self.turn
         
@@ -61,8 +69,11 @@ class Checkers:
                 # PLACE pawn at landing square:
                 self.board[y-2][x-2] = turn
 
-                moves.append([x-2, y-2])
-                moves.extend(self.CanEatForPawn(x-2, y-2, turn))
+                moves.append([y-2, x-2])
+
+                next_moves = self.CanEatForPawn(y-2, x-2, turn)
+                if next_moves != []:
+                    moves[-1].extend(next_moves) 
 
                 # RESTORE landing square:
                 self.board[y-2][x-2] = "_"
@@ -78,8 +89,10 @@ class Checkers:
                 self.board[y-1][x+1] = "_"
                 self.board[y-2][x+2] = turn
 
-                moves.append([x+2, y-2])
-                moves.extend(self.CanEatForPawn(x+2, y-2, turn))
+                moves.append([y-2, x+2])
+                next_moves = self.CanEatForPawn(y-2, x+2, turn)
+                if next_moves != []:
+                    moves[-1].extend(next_moves) 
 
                 self.board[y-2][x+2] = "_"
                 self.board[y-1][x+1] = other_turn
@@ -92,8 +105,10 @@ class Checkers:
                 self.board[y+1][x-1] = "_"
                 self.board[y+2][x-2] = turn
 
-                moves.append([x-2, y+2])
-                moves.extend(self.CanEatForPawn(x-2, y+2, turn))
+                moves.append([y+2, x-2])
+                next_moves = self.CanEatForPawn(y+2, x-2, turn)
+                if next_moves != []:
+                    moves[-1].extend(next_moves) 
 
                 self.board[y+2][x-2] = "_"
                 self.board[y+1][x-1] = other_turn
@@ -106,8 +121,10 @@ class Checkers:
                 self.board[y+1][x+1] = "_"
                 self.board[y+2][x+2] = turn
 
-                moves.append([x+2, y+2])
-                moves.extend(self.CanEatForPawn(x+2, y+2, turn))
+                moves.append([y+2, x+2])
+                next_moves = self.CanEatForPawn(y+2, x+2, turn)
+                if next_moves != []:
+                    moves[-1].extend(next_moves) 
 
                 self.board[y+2][x+2] = "_"
                 self.board[y+1][x+1] = other_turn
@@ -116,21 +133,27 @@ class Checkers:
         return moves
 
         
-        
-    def GetPossibleMove(self, turn=None):
+    def GetPossibleMoves(self, turn=None):
         if turn is None:
             turn = self.turn
         
         
-
-
 def InRange(x, y):
     return 1 <= x <= 8 and 1 <= y <= 8
 
 
 def main():
     check = Checkers()
+    
+    check.movePawn(3, 4, 4, 3, "b")
+    check.movePawn(6, 3, 5, 2, "w")
+    check.movePawn(6, 5, 5, 4, "w")
+    # check.movePawn(6, 1, 5, 4, "w")
+
+    # check.movePawn(6, 7, 5, 6, "w")
+    # check.movePawn(7, 8, 5, 8, "w")
     check.show()
+    print(check.GetPossibleMovesForPawn(4, 3, turn="b"))
 
 if __name__ == "__main__":
     main()
