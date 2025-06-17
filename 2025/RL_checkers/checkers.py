@@ -21,6 +21,15 @@ class Checkers:
     def show(self):
         print(self.board)
 
+
+    def promotePawn(self, y, x):
+        # Promote to king when reaching the far edge
+        val = self.board[y][x]
+        if val == 1 and y == 1:
+            self.board[y][x] = 2
+        elif val == -1 and y == 8:
+            self.board[y][x] = -2
+
     def movePawn(self, y_prev, x_prev, y, x):
         turn = self.board[y_prev][x_prev] 
         if turn == 0:
@@ -28,10 +37,41 @@ class Checkers:
 
         self.board[y_prev][x_prev] = 0
         self.board[y][x] = turn
+        self.promotePawn(y, x)
+
 
     def takeMove(self, y_prev, x_prev, new_coords):
-        if abs(y_prev-new_coords[0]) == 1:
-            self.movePawn(y_prev, x_prev, new_coords[0], new_coords[1])
+        turn = self.board[y_prev][x_prev]
+        y_dest, x_dest = new_coords[0], new_coords[1]
+
+        if abs(turn) == 2:  # king piece
+            # Determine if path crosses exactly one enemy piece (a capture) or none (slide)
+            dy = y_dest - y_prev
+            dx = x_dest - x_prev
+            if abs(dy) != abs(dx):
+                return "Illegal king move (not diagonal)"
+            step_y = 1 if dy > 0 else -1
+            step_x = 1 if dx > 0 else -1
+            ny, nx = y_prev + step_y, x_prev + step_x
+            enemies = []
+            while (ny, nx) != (y_dest, x_dest):
+                if self.board[ny][nx] != 0:
+                    if self.board[ny][nx] * turn < 0:
+                        enemies.append((ny, nx))
+                    else:
+                        return "Illegal: own piece blocks king path"
+                ny += step_y
+                nx += step_x
+            if len(enemies) == 0:
+                self.movePawn(y_prev, x_prev, y_dest, x_dest)
+            elif len(enemies) == 1:
+                self.takeEatKing(y_prev, x_prev, new_coords)
+            else:
+                return "Illegal: king cannot jump over multiple enemies in one segment"
+            return
+
+        if abs(y_prev - y_dest) == 1:
+            self.movePawn(y_prev, x_prev, y_dest, x_dest)
         else:
             self.takeEat(y_prev, x_prev, new_coords)
 
@@ -46,14 +86,95 @@ class Checkers:
         if len(new_coords) > 2:
             self.takeEat(y, x, new_coords[2:])
 
+    def takeEatKing(self, y_prev, x_prev, new_coords):
+        y, x = new_coords[0], new_coords[1]
+        turn = self.board[y_prev][x_prev]
+        dy = y - y_prev
+        dx = x - x_prev
+        step_y = 1 if dy > 0 else -1
+        step_x = 1 if dx > 0 else -1
+        # find the opponent piece along the path
+        ny, nx = y_prev + step_y, x_prev + step_x
+        cap_y = cap_x = None
+
+        while (ny, nx) != (y, x):
+            if self.board[ny][nx] * turn < 0:
+                cap_y, cap_x = ny, nx
+                break
+            ny += step_y
+            nx += step_x
+
+        # perform move and capture
+        self.board[y_prev][x_prev] = 0
+        self.board[cap_y][cap_x] = 0
+        self.board[y][x] = turn
+        # continue multi-capture if present
+        if len(new_coords) > 2:
+            self.takeEatKing(y, x, new_coords[2:])
+
+    def GetPossibleMovesForKing(self, y, x):
+        turn = self.board[y][x]
+        moves = self.CanEatForKing(y, x, turn)
+        canEat = True
+        if not moves:
+            canEat = False
+
+            for dy, dx in [(-1, -1), (-1, 1), (1, -1), (1, 1)]:
+                ny, nx = y + dy, x + dx
+                while InRange(nx, ny) and self.board[ny][nx] == 0:
+                    moves.append([ny, nx])
+                    ny += dy
+                    nx += dx
+        return moves, canEat
+
+    def CanEatForKing(self, y, x, turn):
+        simple = turn // abs(turn)
+        other_vals = [-simple, -2 * simple]  # opponent pawn and king
+        moves = []
+        # For each diagonal direction, look for an opponent piece with empty landings beyond
+        for dy, dx in [(-1, -1), (-1, 1), (1, -1), (1, 1)]:
+            ny, nx = y + dy, x + dx
+            # slide to find first non-empty square
+            while InRange(nx, ny) and self.board[ny][nx] == 0:
+                ny += dy
+                nx += dx
+
+            if InRange(nx, ny) and self.board[ny][nx] in other_vals:
+                after_y, after_x = ny + dy, nx + dx
+
+                while InRange(after_x, after_y) and self.board[after_y][after_x] == 0:
+
+                    other = self.board[ny][nx]
+                    self.board[y][x] = 0
+                    self.board[ny][nx] = 0
+                    self.board[after_y][after_x] = turn
+
+                    next_moves = self.CanEatForKing(after_y, after_x, turn)
+                    if next_moves:
+                        for nm in next_moves:
+                            moves.append([after_y, after_x] + nm)
+                    else:
+                        moves.append([after_y, after_x])
+
+                    self.board[y][x] = turn
+                    self.board[ny][nx] = other
+                    self.board[after_y][after_x] = 0
+
+                    after_y += dy
+                    after_x += dx
+        return moves
+
 
     def GetPossibleMovesForPawn(self, y, x):
         turn = self.board[y][x]
 
         if turn == 0:
             return "In (x, y) nothing"
+        
+        elif abs(turn) == 2:
+            return self.GetPossibleMovesForKing(y, x)
 
-        if turn == 1:
+        if turn >= 1:
             symb = -1
         else:
             symb = 1
@@ -61,8 +182,6 @@ class Checkers:
         moves = self.CanEatForPawn(y, x, turn)
         canEat = True
         if not moves:
-            if (y == 1 and turn == 1) or (y == 8 and turn == -1):
-                return None, False  # todo: implement king moves
             
             canEat = False
 
@@ -160,7 +279,6 @@ class Checkers:
         return moves
 
 
-        
     def GetPossibleMoves(self, turn=None, eatable=False):
         if turn is None:
             turn = 1
@@ -168,7 +286,7 @@ class Checkers:
         moves = []
         for i in range(10):
             for j in range(10):
-                if self.board[i][j] == turn:
+                if self.board[i][j] * turn > 0:
                     move, canEat = self.GetPossibleMovesForPawn(i, j) #[[], []] or [[]]
                     if move is not None:
                         if eatable:
@@ -186,6 +304,7 @@ class Checkers:
         if turn is None:
             turn = 1
         moves = self.GetPossibleMoves(turn)
+        print(moves)
         if not moves:
             print(f"{turn} is lost")
             return 0
@@ -197,16 +316,19 @@ class Checkers:
 
 
     def isEnd(self):
-        black, white = 0, 0
+        black = white = 0
         for i in range(10):
             for j in range(10):
-                if self.board[i][j] == 1:
+                val = self.board[i][j]
+                if val > 0:
                     white = 1
-                elif self.board[i][j] == -1:
+                elif val < 0:
                     black = 1
-                if white == 1 and black == 1:
+
+                if white and black:
                     return False
         return True
+
 
         
 def InRange(x, y):
@@ -220,7 +342,7 @@ def main():
         turn = 1
 
         while True:
-            time.sleep(0.5)
+            time.sleep(0.2)
             if check.playRandomMove(turn = turn) == 0:
                 break
 
@@ -242,8 +364,11 @@ def test():
 
     check.movePawn(7, 2, 3, 6)
     check.movePawn(2, 5, 0, 0)
+
+    check.movePawn(5, 2, 1, 2)
+    check.movePawn(5, 6, 1, 2)
     check.show()
-    print(check.GetPossibleMovesForPawn(4, 3))
+    print(check.GetPossibleMovesForPawn(1, 2))
 
 if __name__ == "__main__":
     main()
