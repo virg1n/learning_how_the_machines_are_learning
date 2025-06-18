@@ -2,6 +2,8 @@ import numpy as np
 import random
 import time
 
+EAT_REWARD_MULT = 0.2
+
 class Checkers:
     def __init__(self):
         self.black = np.zeros((10, 10))
@@ -16,14 +18,16 @@ class Checkers:
         
         board = np.where(self.black, -1, 0)
         self.board = np.where(self.white, 1, board)
-        
-
+    
 
     def show(self):
         print(self.board)
 
     def getBoard(self):
         return self.board.copy()
+    
+    def setBoard(self, board):
+        self.board = board
 
 
     def promotePawn(self, y, x):
@@ -68,17 +72,17 @@ class Checkers:
                 nx += step_x
             if len(enemies) == 0:
                 self.movePawn(y_prev, x_prev, y_dest, x_dest)
-                return -0.01 #reward for doing nothing
+                return -0.005 #reward for doing nothing
             elif len(enemies) == 1:
-                return self.takeEatKing(y_prev, x_prev, new_coords) #reward for eating
+                return self.takeEatKing(y_prev, x_prev, new_coords) * EAT_REWARD_MULT #reward for eating
             else:
                 return "Illegal: king cannot jump over multiple enemies in one segment"
 
         if abs(y_prev - y_dest) == 1:
             self.movePawn(y_prev, x_prev, y_dest, x_dest)
-            return -0.01 #reward for doing nothing
+            return -0.005 #reward for doing nothing
         else:
-            return self.takeEat(y_prev, x_prev, new_coords) #reward for eating
+            return self.takeEat(y_prev, x_prev, new_coords) * EAT_REWARD_MULT #reward for eating
 
 
     def takeEat(self, y_prev, x_prev, new_coords, seq=1):
@@ -307,19 +311,20 @@ class Checkers:
 
         return moves
 
+
     def playRandomMove(self, turn=None):
         if turn is None:
             turn = 1
         moves = self.GetPossibleMoves(turn)
-        print(moves)
+        # print(moves)
         if not moves:
-            print(f"{turn} is lost")
+            # print(f"{turn} is lost")
             return -1
         
         move = random.choice(moves)
         self.takeMove(list(move.keys())[0][0], list(move.keys())[0][1], random.choice(list(move.values())[0]))
-        self.show()
-        print()
+        # self.show()
+        # print()
 
 
     def isEnd(self):
