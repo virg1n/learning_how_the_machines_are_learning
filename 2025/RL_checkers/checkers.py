@@ -18,8 +18,12 @@ class Checkers:
         self.board = np.where(self.white, 1, board)
         
 
+
     def show(self):
         print(self.board)
+
+    def getBoard(self):
+        return self.board.copy()
 
 
     def promotePawn(self, y, x):
@@ -64,19 +68,20 @@ class Checkers:
                 nx += step_x
             if len(enemies) == 0:
                 self.movePawn(y_prev, x_prev, y_dest, x_dest)
+                return -0.01 #reward for doing nothing
             elif len(enemies) == 1:
-                self.takeEatKing(y_prev, x_prev, new_coords)
+                return self.takeEatKing(y_prev, x_prev, new_coords) #reward for eating
             else:
                 return "Illegal: king cannot jump over multiple enemies in one segment"
-            return
 
         if abs(y_prev - y_dest) == 1:
             self.movePawn(y_prev, x_prev, y_dest, x_dest)
+            return -0.01 #reward for doing nothing
         else:
-            self.takeEat(y_prev, x_prev, new_coords)
+            return self.takeEat(y_prev, x_prev, new_coords) #reward for eating
 
 
-    def takeEat(self, y_prev, x_prev, new_coords):
+    def takeEat(self, y_prev, x_prev, new_coords, seq=1):
         y, x = new_coords[0], new_coords[1]
         self.movePawn(y_prev, x_prev, y, x)
 
@@ -84,9 +89,10 @@ class Checkers:
         self.board[mid_y][mid_x] = 0
 
         if len(new_coords) > 2:
-            self.takeEat(y, x, new_coords[2:])
+            seq = self.takeEat(y, x, new_coords[2:], seq=seq+1)
+        return seq
 
-    def takeEatKing(self, y_prev, x_prev, new_coords):
+    def takeEatKing(self, y_prev, x_prev, new_coords, seq=1):
         y, x = new_coords[0], new_coords[1]
         turn = self.board[y_prev][x_prev]
         dy = y - y_prev
@@ -110,7 +116,8 @@ class Checkers:
         self.board[y][x] = turn
         # continue multi-capture if present
         if len(new_coords) > 2:
-            self.takeEatKing(y, x, new_coords[2:])
+            seq = self.takeEatKing(y, x, new_coords[2:], seq = seq + 1)
+        return seq
 
     def GetPossibleMovesForKing(self, y, x):
         turn = self.board[y][x]
@@ -307,7 +314,7 @@ class Checkers:
         print(moves)
         if not moves:
             print(f"{turn} is lost")
-            return 0
+            return -1
         
         move = random.choice(moves)
         self.takeMove(list(move.keys())[0][0], list(move.keys())[0][1], random.choice(list(move.values())[0]))
@@ -328,6 +335,17 @@ class Checkers:
                 if white and black:
                     return False
         return True
+    
+    def whoWon(self):
+        for i in range(10):
+            for j in range(10):
+                val = self.board[i][j]
+                if val > 0:
+                    return 1
+                elif val < 0:
+                    return -1
+
+        return 0
 
 
         
@@ -336,14 +354,13 @@ def InRange(x, y):
 
 
 def main():
-    
     for _ in range (1):
         check = Checkers()
         turn = 1
 
         while True:
             time.sleep(0.2)
-            if check.playRandomMove(turn = turn) == 0:
+            if check.playRandomMove(turn = turn) == -1:
                 break
 
             turn = -1 * turn
