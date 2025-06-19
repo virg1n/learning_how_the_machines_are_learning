@@ -49,6 +49,8 @@ class Checkers:
 
 
     def takeMove(self, y_prev, x_prev, new_coords):
+        self.show()
+        print()
         turn = self.board[y_prev][x_prev]
         y_dest, x_dest = new_coords[0], new_coords[1]
 
