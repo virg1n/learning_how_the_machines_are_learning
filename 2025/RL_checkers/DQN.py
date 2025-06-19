@@ -14,6 +14,8 @@ from checkers import Checkers
 
 MAX_JUMPS=4
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(device)
 
 class QNet(nn.Module):
     def __init__(self, state_dim, action_dim):
@@ -89,8 +91,8 @@ def main():
     discount_factor = 0.95
     num_of_episodes = 10000
     
-    Q = QNet(400, 2 + 2 * MAX_JUMPS)
-    target_Q = copy.deepcopy(Q)
+    Q = QNet(400, 2 + 2 * MAX_JUMPS).to(device)
+    target_Q = copy.deepcopy(Q).to(device)
     target_update_freq = 70
     optimizer = optim.Adam(Q.parameters(), lr=learning_rate)
 
@@ -98,16 +100,16 @@ def main():
         epsilon = epsilon_scheduler.get_epsilon()
         if random.random() < epsilon:
             return random.randrange(encoded_actions.size(0))
-        qs = Q(state_batch, encoded_actions)
+        qs = Q(state_batch, encoded_actions).to(device)
         return qs.argmax().item()
     
     def maxByQ(state, possible_actions):
-        all_qs = Q(state, possible_actions) #[K]
+        all_qs = Q(state, possible_actions).to(device) #[K]
         return possible_actions[all_qs.argmax()]
     
     def updateQ(q_pred, q_target):
         if q_target.dim() == 0:
-            q_target = q_target.unsqueeze(0)
+            q_target = q_target.unsqueeze(0).to(device)
         loss = F.mse_loss(q_pred, q_target.detach())
         optimizer.zero_grad()
         loss.backward()
@@ -134,19 +136,19 @@ def main():
                 for action in possible_actions:
                     for fr, seqs in action.items():
                         for seq in seqs:
-                            encoded_actions.append(encode_actions(list(fr), seq)) #[K, 10]
+                            encoded_actions.append(encode_actions(list(fr), seq).to(device)) #[K, 10]
                             action_mapping.append( (fr, seq) )
 
-                encoded_actions = torch.stack(encoded_actions, dim=0)
+                encoded_actions = torch.stack(encoded_actions, dim=0).to(device)
 
                 state = game.getBoard()
                 encoded_board = encode_states(state) #[400]
-                batch_states = encoded_board.unsqueeze(0).repeat(encoded_actions.size(0), 1) #[K, 400]
+                batch_states = encoded_board.unsqueeze(0).repeat(encoded_actions.size(0), 1).to(device) #[K, 400]
 
                 i = e_greedy(batch_states, encoded_actions)
                 chosen_encoding = encoded_actions[i]
                 fr, seq = action_mapping[i]
-                q_pred = Q(encoded_board.unsqueeze(0), chosen_encoding.unsqueeze(0))  # [1]
+                q_pred = Q(encoded_board.unsqueeze(0).to(device), chosen_encoding.unsqueeze(0)).to(device)  # [1]
 
                 gain = game.takeMove(fr[0], fr[1], seq)
                 terminal = game.isEnd()
@@ -157,14 +159,14 @@ def main():
                     print("win" if winner == turn else "lose")
                     final_reward = +1 if winner == turn else -1
                     q_target = gain + final_reward
-                    updateQ(q_pred, torch.tensor([q_target], dtype=torch.float32))
+                    updateQ(q_pred, torch.tensor([q_target], dtype=torch.float32).to(device))
                     break
 
                 # random move from opponent
                 if game.playRandomMove(turn = -turn) == -1: # opponent lost
                     print("win")
                     q_target = gain + 1
-                    updateQ(q_pred, torch.tensor([q_target], dtype=torch.float32))
+                    updateQ(q_pred, torch.tensor([q_target], dtype=torch.float32).to(device))
                     break
 
                 if game.isEnd():
@@ -172,27 +174,27 @@ def main():
                     print("win" if winner == turn else "lose")
                     final_reward = +1 if winner == turn else -1
                     q_target = gain + final_reward
-                    updateQ(q_pred, torch.tensor([q_target], dtype=torch.float32))
+                    updateQ(q_pred, torch.tensor([q_target], dtype=torch.float32).to(device))
                     break
 
                 # Update q_pred
-                encoded_board_new = encode_states(game.getBoard()) #[400]
+                encoded_board_new = encode_states(game.getBoard()).to(device) #[400]
             
                 possible_actions_new = game.GetPossibleMoves(turn)
                 if not possible_actions_new:
                     q_target = -1
-                    updateQ(q_pred, torch.tensor([q_target], dtype=torch.float32))
+                    updateQ(q_pred, torch.tensor([q_target], dtype=torch.float32).to(device))
                     break
 
                 encoded_actions_new = []
                 for action in possible_actions_new:
                     for a, b in action.items():
                         for seq in b:
-                            encoded_actions_new.append(encode_actions(list(a), seq)) #[K, 10]
+                            encoded_actions_new.append(encode_actions(list(a), seq).to(device)) #[K, 10]
 
-                encoded_actions_new = torch.stack(encoded_actions_new, dim=0)
-                batch_states_new = encoded_board_new.unsqueeze(0).repeat(encoded_actions_new.size(0), 1) #[K, 400]
-                q_target = gain + discount_factor * target_Q(batch_states_new, encoded_actions_new).max()
+                encoded_actions_new = torch.stack(encoded_actions_new, dim=0).to(device)
+                batch_states_new = encoded_board_new.unsqueeze(0).repeat(encoded_actions_new.size(0), 1).to(device) #[K, 400]
+                q_target = gain + discount_factor * target_Q(batch_states_new, encoded_actions_new).to(device).max()
                 updateQ(q_pred, q_target)
 
                 buffer.push(encoded_board, chosen_encoding, gain, game.getBoard(), bool(terminal))
@@ -206,14 +208,14 @@ def main():
                     batch = buffer.sample(buffer_batch_size)
 
                     states, actions, rewards, next_states, dones = zip(*batch)
-                    states = torch.stack(states) # [B, 400]
-                    actions = torch.stack(actions) # [B, 10]
-                    rewards = torch.tensor(rewards) # [B]
+                    states = torch.stack(states).to(device) # [B, 400]
+                    actions = torch.stack(actions).to(device) # [B, 10]
+                    rewards = torch.tensor(rewards).to(device) # [B]
                     next_states = next_states #[10, 10]
-                    dones = torch.tensor(dones) # [B] (bool/int)
+                    dones = torch.tensor(dones).to(device) # [B] (bool/int)
 
-                    q_pred = Q(states, actions) #[B]
-                    q_target = torch.zeros_like(q_pred)
+                    q_pred = Q(states, actions).to(device) #[B]
+                    q_target = torch.zeros_like(q_pred).to(device)
 
                     for sample in range(buffer_batch_size):
                         
@@ -234,11 +236,11 @@ def main():
                                         encoded_actions.append(encode_actions(list(fr), seq))
                                         action_mapping.append( (fr, seq) )
 
-                            encoded_actions = torch.stack(encoded_actions, dim=0)
-                            encoded_board = encode_states(next_states[sample])
+                            encoded_actions = torch.stack(encoded_actions, dim=0).to(device)
+                            encoded_board = encode_states(next_states[sample]).to(device)
 
-                            batch_states = encoded_board.unsqueeze(0).repeat(encoded_actions.size(0), 1)  # Shape: [K, 256]
-                            q_boorstrap = target_Q(batch_states, encoded_actions)
+                            batch_states = encoded_board.unsqueeze(0).repeat(encoded_actions.size(0), 1).to(device)  # Shape: [K, 256]
+                            q_boorstrap = target_Q(batch_states, encoded_actions).to(device)
                             q_target[sample] = rewards[sample] + discount_factor * q_boorstrap.max()
 
                     loss = F.mse_loss(q_pred, q_target.detach())
