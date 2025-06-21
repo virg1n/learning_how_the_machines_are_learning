@@ -49,8 +49,8 @@ class Checkers:
 
 
     def takeMove(self, y_prev, x_prev, new_coords):
-        self.show()
-        print()
+        # self.show()
+        # print()
         turn = self.board[y_prev][x_prev]
         y_dest, x_dest = new_coords[0], new_coords[1]
 
@@ -321,12 +321,11 @@ class Checkers:
         # print(moves)
         if not moves:
             # print(f"{turn} is lost")
-            return -1
+            return None
         
         move = random.choice(moves)
-        self.takeMove(list(move.keys())[0][0], list(move.keys())[0][1], random.choice(list(move.values())[0]))
-        # self.show()
-        # print()
+        return self.takeMove(list(move.keys())[0][0], list(move.keys())[0][1], random.choice(list(move.values())[0]))
+
 
 
     def isEnd(self):
