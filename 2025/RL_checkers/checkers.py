@@ -2,7 +2,7 @@ import numpy as np
 import random
 import time
 
-EAT_REWARD_MULT = 0.2
+EAT_REWARD_MULT = 1
 
 class Checkers:
     def __init__(self):
@@ -35,8 +35,11 @@ class Checkers:
         val = self.board[y][x]
         if val == 1 and y == 1:
             self.board[y][x] = 2
+            return 1.5
         elif val == -1 and y == 8:
             self.board[y][x] = -2
+            return 1.5
+        return 0
 
     def movePawn(self, y_prev, x_prev, y, x):
         turn = self.board[y_prev][x_prev] 
@@ -45,12 +48,10 @@ class Checkers:
 
         self.board[y_prev][x_prev] = 0
         self.board[y][x] = turn
-        self.promotePawn(y, x)
+        return self.promotePawn(y, x)
 
 
     def takeMove(self, y_prev, x_prev, new_coords):
-        # self.show()
-        # print()
         turn = self.board[y_prev][x_prev]
         y_dest, x_dest = new_coords[0], new_coords[1]
 
@@ -73,16 +74,16 @@ class Checkers:
                 ny += step_y
                 nx += step_x
             if len(enemies) == 0:
-                self.movePawn(y_prev, x_prev, y_dest, x_dest)
-                return -0.005 #reward for doing nothing
+                king = self.movePawn(y_prev, x_prev, y_dest, x_dest)
+                return -0.005 + king #reward for doing nothing
             elif len(enemies) == 1:
                 return self.takeEatKing(y_prev, x_prev, new_coords) * EAT_REWARD_MULT #reward for eating
             else:
                 return "Illegal: king cannot jump over multiple enemies in one segment"
 
         if abs(y_prev - y_dest) == 1:
-            self.movePawn(y_prev, x_prev, y_dest, x_dest)
-            return -0.005 #reward for doing nothing
+            king = self.movePawn(y_prev, x_prev, y_dest, x_dest)
+            return -0.005 + king #reward for doing nothing
         else:
             return self.takeEat(y_prev, x_prev, new_coords) * EAT_REWARD_MULT #reward for eating
 
@@ -325,7 +326,8 @@ class Checkers:
         
         move = random.choice(moves)
         return self.takeMove(list(move.keys())[0][0], list(move.keys())[0][1], random.choice(list(move.values())[0]))
-
+        # self.show()
+        # print()
 
 
     def isEnd(self):
