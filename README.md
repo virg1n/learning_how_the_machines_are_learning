@@ -5,3 +5,5 @@
 - [3blue 1brown Deep Learning Playlist](https://www.youtube.com/playlist?list=PLZHQObOWTQDNU6R1_67000Dx_ZCJB-3pi)
 
 - https://www.youtube.com/@umarjamilai
+
+- [DeepMind x UCL | Reinforcement Learning Lectures](https://dpmd.ai/DeepMindxUCL21)
