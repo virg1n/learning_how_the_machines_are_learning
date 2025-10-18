@@ -5,6 +5,7 @@ from tqdm import tqdm
 from encoder import Encoder
 from decoder import Decoder
 from diffusion import Diffusion
+from DDPM import DDPMSampler
 
 
 WIDTH = 512
@@ -72,7 +73,7 @@ def generate(prompt, neg_promt=None,
 
         if sampler_name=="ddpm":
             sampler = DDPMSampler(generator)
-            sampler.n_inference_steps = n_inference_steps
+            sampler.set_n_inference_steps(n_inference_steps)
         else:
             raise ValueError("Unknown sampler_name")
         
