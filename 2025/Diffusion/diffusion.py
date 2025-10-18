@@ -16,15 +16,14 @@ class TimeEmbedding(nn.Module):
         t = self.up(t)
         t = F.silu(t)
         return self.out(t)
-    
-        
+
 
 class MySequential(nn.Sequential):
-    def forward(self, x, time, prompt):
+    def forward(self, x, prompt, time):
         for layer in self:
             if isinstance(layer, UNET_Attention):
                 x = layer(x, prompt)
-            if isinstance(layer, UNET_ResidualBlock):
+            elif isinstance(layer, UNET_ResidualBlock):
                 x = layer(x, time)
             else:
                 x = layer(x)
@@ -127,48 +126,48 @@ class UNET_ResidualBlock(nn.Module):
     
 
 class UNET(nn.Module):
-    def __init__(self, in_channels=4, hiddens_channels=320, attn_emb=40):
+    def __init__(self, in_channels=4, hiddens_channels=320, attn_emb=40, dim_time=1280, dim_prompt=768):
         super().__init__()
         self.encoders = nn.ModuleList([
             MySequential(nn.Conv2d(in_channels, hiddens_channels, 3, padding=1)),
-            MySequential(UNET_ResidualBlock(hiddens_channels, hiddens_channels), UNET_Attention(8, attn_emb)),
-            MySequential(UNET_ResidualBlock(hiddens_channels, hiddens_channels), UNET_Attention(8, attn_emb)),
+            MySequential(UNET_ResidualBlock(hiddens_channels, hiddens_channels, dim_time), UNET_Attention(8, attn_emb, dim_prompt)),
+            MySequential(UNET_ResidualBlock(hiddens_channels, hiddens_channels, dim_time), UNET_Attention(8, attn_emb, dim_prompt)),
 
             MySequential(nn.Conv2d(hiddens_channels, hiddens_channels, 3, stride=2, padding=1)),
-            MySequential(UNET_ResidualBlock(hiddens_channels, hiddens_channels*2), UNET_Attention(8, attn_emb*2)),
-            MySequential(UNET_ResidualBlock(hiddens_channels*2, hiddens_channels*2), UNET_Attention(8, attn_emb*2)),
+            MySequential(UNET_ResidualBlock(hiddens_channels, hiddens_channels*2, dim_time), UNET_Attention(8, attn_emb*2, dim_prompt)),
+            MySequential(UNET_ResidualBlock(hiddens_channels*2, hiddens_channels*2, dim_time), UNET_Attention(8, attn_emb*2, dim_prompt)),
 
             MySequential(nn.Conv2d(hiddens_channels*2, hiddens_channels*2, 3, stride=2, padding=1)),
-            MySequential(UNET_ResidualBlock(hiddens_channels*2, hiddens_channels*4), UNET_Attention(8, attn_emb*4)),
-            MySequential(UNET_ResidualBlock(hiddens_channels*4, hiddens_channels*4), UNET_Attention(8, attn_emb*4)),
+            MySequential(UNET_ResidualBlock(hiddens_channels*2, hiddens_channels*4, dim_time), UNET_Attention(8, attn_emb*4, dim_prompt)),
+            MySequential(UNET_ResidualBlock(hiddens_channels*4, hiddens_channels*4, dim_time), UNET_Attention(8, attn_emb*4, dim_prompt)),
 
             MySequential(nn.Conv2d(hiddens_channels*4, hiddens_channels*4, 3, stride=2, padding=1)),
-            MySequential(UNET_ResidualBlock(hiddens_channels*4, hiddens_channels*4)),
-            MySequential(UNET_ResidualBlock(hiddens_channels*4, hiddens_channels*4)),
+            MySequential(UNET_ResidualBlock(hiddens_channels*4, hiddens_channels*4, dim_time)),
+            MySequential(UNET_ResidualBlock(hiddens_channels*4, hiddens_channels*4, dim_time)),
         ])
 
         self.bottom = MySequential(
-            UNET_ResidualBlock(hiddens_channels*4, hiddens_channels*4),
+            UNET_ResidualBlock(hiddens_channels*4, hiddens_channels*4, dim_time),
             UNET_Attention(8, attn_emb*4),
-            UNET_ResidualBlock(hiddens_channels*4, hiddens_channels*4)
+            UNET_ResidualBlock(hiddens_channels*4, hiddens_channels*4, dim_time)
         )
 
         self.decoders = nn.ModuleList([
-            MySequential(UNET_ResidualBlock(hiddens_channels*8, hiddens_channels*4)),
-            MySequential(UNET_ResidualBlock(hiddens_channels*8, hiddens_channels*4)),
-            MySequential(UNET_ResidualBlock(hiddens_channels*8, hiddens_channels*4), nn.Conv2d(hiddens_channels*4, hiddens_channels*4, kernel_size=3, padding=1), nn.Upsample(scale_factor=2)),
+            MySequential(UNET_ResidualBlock(hiddens_channels*8, hiddens_channels*4, dim_time)),
+            MySequential(UNET_ResidualBlock(hiddens_channels*8, hiddens_channels*4, dim_time)),
+            MySequential(UNET_ResidualBlock(hiddens_channels*8, hiddens_channels*4, dim_time), nn.Conv2d(hiddens_channels*4, hiddens_channels*4, kernel_size=3, padding=1), nn.Upsample(scale_factor=2)),
 
-            MySequential(UNET_ResidualBlock(hiddens_channels*8, hiddens_channels*4), UNET_Attention(8, attn_emb*4)),
-            MySequential(UNET_ResidualBlock(hiddens_channels*8, hiddens_channels*4), UNET_Attention(8, attn_emb*4)),
-            MySequential(UNET_ResidualBlock(hiddens_channels*6, hiddens_channels*4), UNET_Attention(8, attn_emb*4), nn.Conv2d(hiddens_channels*4, hiddens_channels*4, kernel_size=3, padding=1), nn.Upsample(scale_factor=2, mode='nearest')),
+            MySequential(UNET_ResidualBlock(hiddens_channels*8, hiddens_channels*4, dim_time), UNET_Attention(8, attn_emb*4, dim_prompt)),
+            MySequential(UNET_ResidualBlock(hiddens_channels*8, hiddens_channels*4, dim_time), UNET_Attention(8, attn_emb*4, dim_prompt)),
+            MySequential(UNET_ResidualBlock(hiddens_channels*6, hiddens_channels*4, dim_time), UNET_Attention(8, attn_emb*4, dim_prompt), nn.Conv2d(hiddens_channels*4, hiddens_channels*4, kernel_size=3, padding=1), nn.Upsample(scale_factor=2, mode='nearest')),
 
-            MySequential(UNET_ResidualBlock(hiddens_channels*6, hiddens_channels*2), UNET_Attention(8, attn_emb*2)),
-            MySequential(UNET_ResidualBlock(hiddens_channels*4, hiddens_channels*2), UNET_Attention(8, attn_emb*2)),
-            MySequential(UNET_ResidualBlock(hiddens_channels*3, hiddens_channels*2), UNET_Attention(8, attn_emb*2), nn.Conv2d(hiddens_channels*2, hiddens_channels*2, kernel_size=3, padding=1), nn.Upsample(scale_factor=2, mode='nearest')),
+            MySequential(UNET_ResidualBlock(hiddens_channels*6, hiddens_channels*2, dim_time), UNET_Attention(8, attn_emb*2, dim_prompt)),
+            MySequential(UNET_ResidualBlock(hiddens_channels*4, hiddens_channels*2, dim_time), UNET_Attention(8, attn_emb*2, dim_prompt)),
+            MySequential(UNET_ResidualBlock(hiddens_channels*3, hiddens_channels*2, dim_time), UNET_Attention(8, attn_emb*2, dim_prompt), nn.Conv2d(hiddens_channels*2, hiddens_channels*2, kernel_size=3, padding=1), nn.Upsample(scale_factor=2, mode='nearest')),
 
-            MySequential(UNET_ResidualBlock(hiddens_channels*3, hiddens_channels*1), UNET_Attention(8, attn_emb)),
-            MySequential(UNET_ResidualBlock(hiddens_channels*2, hiddens_channels*1), UNET_Attention(8, attn_emb)),
-            MySequential(UNET_ResidualBlock(hiddens_channels*1, hiddens_channels*1), UNET_Attention(8, attn_emb)),
+            MySequential(UNET_ResidualBlock(hiddens_channels*3, hiddens_channels*1, dim_time), UNET_Attention(8, attn_emb, dim_prompt)),
+            MySequential(UNET_ResidualBlock(hiddens_channels*2, hiddens_channels*1, dim_time), UNET_Attention(8, attn_emb, dim_prompt)),
+            MySequential(UNET_ResidualBlock(hiddens_channels*1, hiddens_channels*1, dim_time), UNET_Attention(8, attn_emb, dim_prompt)),
         ])
 
     def forward(self, x, prompt, time):

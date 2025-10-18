@@ -41,7 +41,7 @@ class VAE_Attention_Layer(nn.Module):
         residue = x
         x = self.group_norm(x)
 
-        b, c, w, h = x.size()
+        b, c, w, h = x.shape
         x = x.view(b, c, w * h)
         x = x.transpose(-1, -2) # (B, W * H, 512)
 

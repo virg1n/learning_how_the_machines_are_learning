@@ -27,15 +27,45 @@ class SelfAttention(nn.Module):
 
         if use_causal_mask:
             mask = torch.ones_like(attention, dtype=torch.bool).triu(1) 
-            attention.masked_fill_(mask, -torch.inf) 
+            attention.masked_fill_(mask, -1e9) 
 
         attention = F.softmax(attention, dim=-1)
         output = torch.matmul(attention, v)
 
-        output = output.transpose(1, 2)
+        output = output.transpose(1, 2).contiguous()
         output = output.view(B, T, D)
 
         return self.wo(output)
 
 
 
+class CrossAttention(nn.Module):
+    def __init__(self, dims, n_heads, other_dims):
+        super().__init__()
+        self.kv = nn.Linear(other_dims, 2 * dims, bias=False)
+        self.q = nn.Linear(dims, dims, bias=False)
+        self.wo = nn.Linear(dims, dims, bias=False)
+
+        self.n_heads = n_heads
+        self.head_dim = dims//n_heads
+
+    def forward(self, x, y):
+        # x = (B, T, D)
+        B, T, D = x.size()
+        S = y.size(1)
+        k, v = self.kv(y).chunk(2, dim=-1)
+        q = self.q(x)
+
+        q = q.view(B, T, self.n_heads, self.head_dim).transpose(1, 2)   # B, n_heads, T, head_dim
+        k = k.view(B, S, self.n_heads, self.head_dim).transpose(1, 2)   # B, n_heads, S, head_dim
+        v = v.view(B, S, self.n_heads, self.head_dim).transpose(1, 2)   # B, n_heads, S, head_dim
+
+        attention = torch.matmul(q, k.transpose(-2, -1)) * (1.0 / math.sqrt(self.head_dim))
+
+        attention = F.softmax(attention, dim=-1)
+        output = torch.matmul(attention, v)
+
+        output = output.transpose(1, 2).contiguous()
+        output = output.view(B, T, D)
+
+        return self.wo(output)
