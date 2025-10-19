@@ -90,21 +90,25 @@ class UNET_Attention(nn.Module):
 class UNET_ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, dim_time):
         super().__init__()
-        self.first = nn.Sequential(
-            nn.GroupNorm(32, in_channels),
-            nn.SiLU(),
+        self.group_norm_first = nn.GroupNorm(32, in_channels)
+        self.conv_first = nn.Conv2d(in_channels, out_channels, 3, padding=1),
+        # self.first = nn.Sequential(
+        #     nn.GroupNorm(32, in_channels),
+        #     # nn.SiLU(),s
 
-            nn.Conv2d(in_channels, out_channels, 3, padding=1),
-        )
+        #     nn.Conv2d(in_channels, out_channels, 3, padding=1),
+        # )
 
         self.linear_time = nn.Linear(dim_time, out_channels)
 
-        self.merged = nn.Sequential(
-            nn.GroupNorm(32, out_channels),
-            nn.SiLU(),
+        self.group_norm_merged = nn.GroupNorm(32, out_channels)
+        self.conv_merged = nn.Conv2d(out_channels, out_channels, 3, padding=1)
+        # self.merged = nn.Sequential(
+        #     nn.GroupNorm(32, out_channels),
+        #     nn.SiLU(),
 
-            nn.Conv2d(out_channels, out_channels, 3, padding=1),
-        )
+        #     nn.Conv2d(out_channels, out_channels, 3, padding=1),
+        # )
 
         if in_channels == out_channels:
             self.res_layer = nn.Identity()
@@ -114,13 +118,18 @@ class UNET_ResidualBlock(nn.Module):
     def forward(self, x, time):
         residue = x
 
-        x = self.first(x)
+        x = self.group_norm_first(x)
+        x = F.silu(x)
+        x = self.conv_first(x)
 
         time = F.silu(time)
         time = self.linear_time(time)
 
         x = x+ time.unsqueeze(-1).unsqueeze(-1)
-        x = self.merged(x)
+        
+        x = self.group_norm_merged(x)
+        x = F.silu(x)
+        x = self.conv_merged(x)
 
         return self.res_layer(residue) + x
     

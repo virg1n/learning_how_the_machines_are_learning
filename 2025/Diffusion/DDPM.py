@@ -2,9 +2,8 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-from tqdm import tqdm
 
-class DDMPSampler():
+class DDPMSampler():
     def __init__(self, generator, num_training_steps=1000, beta_start = 0.00085, beta_end = 0.0120):
         self.generator = generator
         self.num_training_steps = num_training_steps
@@ -15,7 +14,6 @@ class DDMPSampler():
 
         self.timesteps = torch.from_numpy(np.arange(0, num_training_steps)[::-1].copy())
         self.n_inference_steps = 1
-        # self.one = torch.tensor(1.0)
 
     def set_n_inference_steps(self, n_inference_steps):
         self.n_inference_steps = n_inference_steps
