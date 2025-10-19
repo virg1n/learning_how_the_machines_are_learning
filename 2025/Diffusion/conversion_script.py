@@ -1,224 +1,374 @@
 
 import torch
 
+def map_vae_residual_block(converted, custom_prefix, orig_prefix, original_model):
+
+    # Main path
+    converted[f'{custom_prefix}.main.0.weight'] = original_model[f'{orig_prefix}.norm1.weight']
+    converted[f'{custom_prefix}.main.0.bias'] = original_model[f'{orig_prefix}.norm1.bias']
+    converted[f'{custom_prefix}.main.2.weight'] = original_model[f'{orig_prefix}.conv1.weight']
+    converted[f'{custom_prefix}.main.2.bias'] = original_model[f'{orig_prefix}.conv1.bias']
+    converted[f'{custom_prefix}.main.3.weight'] = original_model[f'{orig_prefix}.norm2.weight']
+    converted[f'{custom_prefix}.main.3.bias'] = original_model[f'{orig_prefix}.norm2.bias']
+    converted[f'{custom_prefix}.main.5.weight'] = original_model[f'{orig_prefix}.conv2.weight']
+    converted[f'{custom_prefix}.main.5.bias'] = original_model[f'{orig_prefix}.conv2.bias']
+    
+    # Conditionally map the residual connection if it exists in the original model
+    if f'{orig_prefix}.nin_shortcut.weight' in original_model:
+        converted[f'{custom_prefix}.res_layer.weight'] = original_model[f'{orig_prefix}.nin_shortcut.weight']
+        converted[f'{custom_prefix}.res_layer.bias'] = original_model[f'{orig_prefix}.nin_shortcut.bias']
+
 def load_from_standard_weights(input_file, device):
-    """
-    Loads weights from an original Stable Diffusion checkpoint and converts them
-    to the naming convention of the custom model.
-    """
     original_model = torch.load(input_file, map_location=device, weights_only=False)["state_dict"]
     
-    converted = {
-        'diffusion': {},
-        'encoder': {},
-        'decoder': {},
-        'clip': {}
-    }
+    converted = {'diffusion': {}, 'encoder': {}, 'decoder': {}, 'clip': {}}
 
-    # Time Embedding Mapping
-    converted['diffusion']['time_embedding.up.weight'] = original_model['model.diffusion_model.time_embed.0.weight']
-    converted['diffusion']['time_embedding.up.bias'] = original_model['model.diffusion_model.time_embed.0.bias']
-    converted['diffusion']['time_embedding.out.weight'] = original_model['model.diffusion_model.time_embed.2.weight']
-    converted['diffusion']['time_embedding.out.bias'] = original_model['model.diffusion_model.time_embed.2.bias']
-
-    # UNET Input Blocks (Encoders) Mapping
-    converted['diffusion']['unet.encoders.0.0.weight'] = original_model['model.diffusion_model.input_blocks.0.0.weight']
-    converted['diffusion']['unet.encoders.0.0.bias'] = original_model['model.diffusion_model.input_blocks.0.0.bias']
-
-    input_block_map = {1: 1, 2: 2, 4: 4, 5: 5, 7: 7, 8: 8, 10: 10, 11: 11}
-    for i, b in input_block_map.items():
-        # Residual Block
-        res_block_prefix = f'diffusion.unet.encoders.{i}.0'
-        orig_res_prefix = f'model.diffusion_model.input_blocks.{b}.0'
-        converted[f'{res_block_prefix}.group_norm_first.weight'] = original_model[f'{orig_res_prefix}.in_layers.0.weight']
-        converted[f'{res_block_prefix}.group_norm_first.bias'] = original_model[f'{orig_res_prefix}.in_layers.0.bias']
-        converted[f'{res_block_prefix}.conv_first.0.weight'] = original_model[f'{orig_res_prefix}.in_layers.2.weight']
-        converted[f'{res_block_prefix}.conv_first.0.bias'] = original_model[f'{orig_res_prefix}.in_layers.2.bias']
-        converted[f'{res_block_prefix}.linear_time.weight'] = original_model[f'{orig_res_prefix}.emb_layers.1.weight']
-        converted[f'{res_block_prefix}.linear_time.bias'] = original_model[f'{orig_res_prefix}.emb_layers.1.bias']
-        converted[f'{res_block_prefix}.group_norm_merged.weight'] = original_model[f'{orig_res_prefix}.out_layers.0.weight']
-        converted[f'{res_block_prefix}.group_norm_merged.bias'] = original_model[f'{orig_res_prefix}.out_layers.0.bias']
-        converted[f'{res_block_prefix}.conv_merged.weight'] = original_model[f'{orig_res_prefix}.out_layers.3.weight']
-        converted[f'{res_block_prefix}.conv_merged.bias'] = original_model[f'{orig_res_prefix}.out_layers.3.bias']
-        if f'{orig_res_prefix}.skip_connection.weight' in original_model:
-            converted[f'{res_block_prefix}.res_layer.weight'] = original_model[f'{orig_res_prefix}.skip_connection.weight']
-            converted[f'{res_block_prefix}.res_layer.bias'] = original_model[f'{orig_res_prefix}.skip_connection.bias']
-
-        # Attention Block
-        attn_block_prefix = f'diffusion.unet.encoders.{i}.1'
-        orig_attn_prefix = f'model.diffusion_model.input_blocks.{b}.1'
-        converted[f'{attn_block_prefix}.group_norm.weight'] = original_model[f'{orig_attn_prefix}.norm.weight']
-        converted[f'{attn_block_prefix}.group_norm.bias'] = original_model[f'{orig_attn_prefix}.norm.bias']
-        converted[f'{attn_block_prefix}.conv_in.weight'] = original_model[f'{orig_attn_prefix}.proj_in.weight']
-        converted[f'{attn_block_prefix}.conv_in.bias'] = original_model[f'{orig_attn_prefix}.proj_in.bias']
-        converted[f'{attn_block_prefix}.layer_norm_1.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm1.weight']
-        converted[f'{attn_block_prefix}.layer_norm_1.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm1.bias']
-        converted[f'{attn_block_prefix}.attention_1.wo.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn1.to_out.0.weight']
-        converted[f'{attn_block_prefix}.attention_1.wo.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn1.to_out.0.bias']
-        converted[f'{attn_block_prefix}.layer_norm_2.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm2.weight']
-        converted[f'{attn_block_prefix}.layer_norm_2.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm2.bias']
-        converted[f'{attn_block_prefix}.attention_2.q.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_q.weight']
-        converted[f'{attn_block_prefix}.attention_2.kv.weight'] = torch.cat([original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_k.weight'], original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_v.weight']], dim=0)
-        converted[f'{attn_block_prefix}.attention_2.wo.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_out.0.weight']
-        converted[f'{attn_block_prefix}.attention_2.wo.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_out.0.bias']
-        converted[f'{attn_block_prefix}.layer_norm_3.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm3.weight']
-        converted[f'{attn_block_prefix}.layer_norm_3.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm3.bias']
-        converted[f'{attn_block_prefix}.linear_geglu_1.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.ff.net.0.proj.weight']
-        converted[f'{attn_block_prefix}.linear_geglu_1.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.ff.net.0.proj.bias']
-        converted[f'{attn_block_prefix}.linear_geglu_2.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.ff.net.2.weight']
-        converted[f'{attn_block_prefix}.linear_geglu_2.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.ff.net.2.bias']
-        converted[f'{attn_block_prefix}.conv_out.weight'] = original_model[f'{orig_attn_prefix}.proj_out.weight']
-        converted[f'{attn_block_prefix}.conv_out.bias'] = original_model[f'{orig_attn_prefix}.proj_out.bias']
-
-    # Downsampling layers
-    downsample_map = {3: 3, 6: 6, 9: 9}
-    for i, b in downsample_map.items():
-        converted[f'diffusion.unet.encoders.{i}.0.weight'] = original_model[f'model.diffusion_model.input_blocks.{b}.0.op.weight']
-        converted[f'diffusion.unet.encoders.{i}.0.bias'] = original_model[f'model.diffusion_model.input_blocks.{b}.0.op.bias']
-
-    # UNET Middle Block Mapping
-    # ResBlock 1
-    converted['diffusion.unet.bottom.0.group_norm_first.weight'] = original_model['model.diffusion_model.middle_block.0.in_layers.0.weight']
-    converted['diffusion.unet.bottom.0.group_norm_first.bias'] = original_model['model.diffusion_model.middle_block.0.in_layers.0.bias']
-    converted['diffusion.unet.bottom.0.conv_first.0.weight'] = original_model['model.diffusion_model.middle_block.0.in_layers.2.weight']
-    converted['diffusion.unet.bottom.0.conv_first.0.bias'] = original_model['model.diffusion_model.middle_block.0.in_layers.2.bias']
-    converted['diffusion.unet.bottom.0.linear_time.weight'] = original_model['model.diffusion_model.middle_block.0.emb_layers.1.weight']
-    converted['diffusion.unet.bottom.0.linear_time.bias'] = original_model['model.diffusion_model.middle_block.0.emb_layers.1.bias']
-    converted['diffusion.unet.bottom.0.group_norm_merged.weight'] = original_model['model.diffusion_model.middle_block.0.out_layers.0.weight']
-    converted['diffusion.unet.bottom.0.group_norm_merged.bias'] = original_model['model.diffusion_model.middle_block.0.out_layers.0.bias']
-    converted['diffusion.unet.bottom.0.conv_merged.weight'] = original_model['model.diffusion_model.middle_block.0.out_layers.3.weight']
-    converted['diffusion.unet.bottom.0.conv_merged.bias'] = original_model['model.diffusion_model.middle_block.0.out_layers.3.bias']
-    # Attention Block
-    converted['diffusion.unet.bottom.1.group_norm.weight'] = original_model['model.diffusion_model.middle_block.1.norm.weight']
-    converted['diffusion.unet.bottom.1.group_norm.bias'] = original_model['model.diffusion_model.middle_block.1.norm.bias']
-    converted['diffusion.unet.bottom.1.conv_in.weight'] = original_model['model.diffusion_model.middle_block.1.proj_in.weight']
-    converted['diffusion.unet.bottom.1.conv_in.bias'] = original_model['model.diffusion_model.middle_block.1.proj_in.bias']
-    converted['diffusion.unet.bottom.1.layer_norm_1.weight'] = original_model['model.diffusion_model.middle_block.1.transformer_blocks.0.norm1.weight']
-    converted['diffusion.unet.bottom.1.layer_norm_1.bias'] = original_model['model.diffusion_model.middle_block.1.transformer_blocks.0.norm1.bias']
-    converted['diffusion.unet.bottom.1.attention_1.wo.weight'] = original_model['model.diffusion_model.middle_block.1.transformer_blocks.0.attn1.to_out.0.weight']
-    converted['diffusion.unet.bottom.1.attention_1.wo.bias'] = original_model['model.diffusion_model.middle_block.1.transformer_blocks.0.attn1.to_out.0.bias']
-    converted['diffusion.unet.bottom.1.layer_norm_2.weight'] = original_model['model.diffusion_model.middle_block.1.transformer_blocks.0.norm2.weight']
-    converted['diffusion.unet.bottom.1.layer_norm_2.bias'] = original_model['model.diffusion_model.middle_block.1.transformer_blocks.0.norm2.bias']
-    converted['diffusion.unet.bottom.1.attention_2.q.weight'] = original_model['model.diffusion_model.middle_block.1.transformer_blocks.0.attn2.to_q.weight']
-    converted['diffusion.unet.bottom.1.attention_2.kv.weight'] = torch.cat([original_model['model.diffusion_model.middle_block.1.transformer_blocks.0.attn2.to_k.weight'], original_model['model.diffusion_model.middle_block.1.transformer_blocks.0.attn2.to_v.weight']], dim=0)
-    converted['diffusion.unet.bottom.1.attention_2.wo.weight'] = original_model['model.diffusion_model.middle_block.1.transformer_blocks.0.attn2.to_out.0.weight']
-    converted['diffusion.unet.bottom.1.attention_2.wo.bias'] = original_model['model.diffusion_model.middle_block.1.transformer_blocks.0.attn2.to_out.0.bias']
-    converted['diffusion.unet.bottom.1.layer_norm_3.weight'] = original_model['model.diffusion_model.middle_block.1.transformer_blocks.0.norm3.weight']
-    converted['diffusion.unet.bottom.1.layer_norm_3.bias'] = original_model['model.diffusion_model.middle_block.1.transformer_blocks.0.norm3.bias']
-    converted['diffusion.unet.bottom.1.linear_geglu_1.weight'] = original_model['model.diffusion_model.middle_block.1.transformer_blocks.0.ff.net.0.proj.weight']
-    converted['diffusion.unet.bottom.1.linear_geglu_1.bias'] = original_model['model.diffusion_model.middle_block.1.transformer_blocks.0.ff.net.0.proj.bias']
-    converted['diffusion.unet.bottom.1.linear_geglu_2.weight'] = original_model['model.diffusion_model.middle_block.1.transformer_blocks.0.ff.net.2.weight']
-    converted['diffusion.unet.bottom.1.linear_geglu_2.bias'] = original_model['model.diffusion_model.middle_block.1.transformer_blocks.0.ff.net.2.bias']
-    converted['diffusion.unet.bottom.1.conv_out.weight'] = original_model['model.diffusion_model.middle_block.1.proj_out.weight']
-    converted['diffusion.unet.bottom.1.conv_out.bias'] = original_model['model.diffusion_model.middle_block.1.proj_out.bias']
-    # ResBlock 2
-    converted['diffusion.unet.bottom.2.group_norm_first.weight'] = original_model['model.diffusion_model.middle_block.2.in_layers.0.weight']
-    converted['diffusion.unet.bottom.2.group_norm_first.bias'] = original_model['model.diffusion_model.middle_block.2.in_layers.0.bias']
-    converted['diffusion.unet.bottom.2.conv_first.0.weight'] = original_model['model.diffusion_model.middle_block.2.in_layers.2.weight']
-    converted['diffusion.unet.bottom.2.conv_first.0.bias'] = original_model['model.diffusion_model.middle_block.2.in_layers.2.bias']
-    converted['diffusion.unet.bottom.2.linear_time.weight'] = original_model['model.diffusion_model.middle_block.2.emb_layers.1.weight']
-    converted['diffusion.unet.bottom.2.linear_time.bias'] = original_model['model.diffusion_model.middle_block.2.emb_layers.1.bias']
-    converted['diffusion.unet.bottom.2.group_norm_merged.weight'] = original_model['model.diffusion_model.middle_block.2.out_layers.0.weight']
-    converted['diffusion.unet.bottom.2.group_norm_merged.bias'] = original_model['model.diffusion_model.middle_block.2.out_layers.0.bias']
-    converted['diffusion.unet.bottom.2.conv_merged.weight'] = original_model['model.diffusion_model.middle_block.2.out_layers.3.weight']
-    converted['diffusion.unet.bottom.2.conv_merged.bias'] = original_model['model.diffusion_model.middle_block.2.out_layers.3.bias']
-
-    # UNET Output Blocks (Decoders) Mapping
-    output_block_map = {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9, 10: 10, 11: 11}
-    for i, b in output_block_map.items():
-        res_block_prefix = f'diffusion.unet.decoders.{i}.0'
-        orig_res_prefix = f'model.diffusion_model.output_blocks.{b}.0'
-        converted[f'{res_block_prefix}.group_norm_first.weight'] = original_model[f'{orig_res_prefix}.in_layers.0.weight']
-        converted[f'{res_block_prefix}.group_norm_first.bias'] = original_model[f'{orig_res_prefix}.in_layers.0.bias']
-        converted[f'{res_block_prefix}.conv_first.0.weight'] = original_model[f'{orig_res_prefix}.in_layers.2.weight']
-        converted[f'{res_block_prefix}.conv_first.0.bias'] = original_model[f'{orig_res_prefix}.in_layers.2.bias']
-        converted[f'{res_block_prefix}.linear_time.weight'] = original_model[f'{orig_res_prefix}.emb_layers.1.weight']
-        converted[f'{res_block_prefix}.linear_time.bias'] = original_model[f'{orig_res_prefix}.emb_layers.1.bias']
-        converted[f'{res_block_prefix}.group_norm_merged.weight'] = original_model[f'{orig_res_prefix}.out_layers.0.weight']
-        converted[f'{res_block_prefix}.group_norm_merged.bias'] = original_model[f'{orig_res_prefix}.out_layers.0.bias']
-        converted[f'{res_block_prefix}.conv_merged.weight'] = original_model[f'{orig_res_prefix}.out_layers.3.weight']
-        converted[f'{res_block_prefix}.conv_merged.bias'] = original_model[f'{orig_res_prefix}.out_layers.3.bias']
-        if f'{orig_res_prefix}.skip_connection.weight' in original_model:
-            converted[f'{res_block_prefix}.res_layer.weight'] = original_model[f'{orig_res_prefix}.skip_connection.weight']
-            converted[f'{res_block_prefix}.res_layer.bias'] = original_model[f'{orig_res_prefix}.skip_connection.bias']
-
-        if len(original_model[f'model.diffusion_model.output_blocks.{b}']) > 1 and isinstance(original_model[f'model.diffusion_model.output_blocks.{b}'][1], torch.nn.Module): # Check if attention block exists
-            attn_block_prefix = f'diffusion.unet.decoders.{i}.1'
-            orig_attn_prefix = f'model.diffusion_model.output_blocks.{b}.1'
-            converted[f'{attn_block_prefix}.group_norm.weight'] = original_model[f'{orig_attn_prefix}.norm.weight']
-            converted[f'{attn_block_prefix}.group_norm.bias'] = original_model[f'{orig_attn_prefix}.norm.bias']
-            converted[f'{attn_block_prefix}.conv_in.weight'] = original_model[f'{orig_attn_prefix}.proj_in.weight']
-            converted[f'{attn_block_prefix}.conv_in.bias'] = original_model[f'{orig_attn_prefix}.proj_in.bias']
-            converted[f'{attn_block_prefix}.layer_norm_1.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm1.weight']
-            converted[f'{attn_block_prefix}.layer_norm_1.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm1.bias']
-            converted[f'{attn_block_prefix}.attention_1.wo.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn1.to_out.0.weight']
-            converted[f'{attn_block_prefix}.attention_1.wo.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn1.to_out.0.bias']
-            converted[f'{attn_block_prefix}.layer_norm_2.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm2.weight']
-            converted[f'{attn_block_prefix}.layer_norm_2.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm2.bias']
-            converted[f'{attn_block_prefix}.attention_2.q.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_q.weight']
-            converted[f'{attn_block_prefix}.attention_2.kv.weight'] = torch.cat([original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_k.weight'], original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_v.weight']], dim=0)
-            converted[f'{attn_block_prefix}.attention_2.wo.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_out.0.weight']
-            converted[f'{attn_block_prefix}.attention_2.wo.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_out.0.bias']
-            converted[f'{attn_block_prefix}.layer_norm_3.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm3.weight']
-            converted[f'{attn_block_prefix}.layer_norm_3.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm3.bias']
-            converted[f'{attn_block_prefix}.linear_geglu_1.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.ff.net.0.proj.weight']
-            converted[f'{attn_block_prefix}.linear_geglu_1.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.ff.net.0.proj.bias']
-            converted[f'{attn_block_prefix}.linear_geglu_2.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.ff.net.2.weight']
-            converted[f'{attn_block_prefix}.linear_geglu_2.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.ff.net.2.bias']
-            converted[f'{attn_block_prefix}.conv_out.weight'] = original_model[f'{orig_attn_prefix}.proj_out.weight']
-            converted[f'{attn_block_prefix}.conv_out.bias'] = original_model[f'{orig_attn_prefix}.proj_out.bias']
-
-    # UNET Final Layer Mapping
-    converted['diffusion.final.norm.weight'] = original_model['model.diffusion_model.out.0.weight']
-    converted['diffusion.final.norm.bias'] = original_model['model.diffusion_model.out.0.bias']
-    converted['diffusion.final.conv.weight'] = original_model['model.diffusion_model.out.2.weight']
-    converted['diffusion.final.conv.bias'] = original_model['model.diffusion_model.out.2.bias']
-
-    # VAE Encoder Mapping
-    converted['encoder.layers.0.weight'] = original_model['first_stage_model.encoder.conv_in.weight']
-    converted['encoder.layers.0.bias'] = original_model['first_stage_model.encoder.conv_in.bias']
-    # ... Continue mapping for all encoder layers based on their sequential order
-    # This part requires manually matching your flat structure to the original hierarchical one.
-    # Example for first residual block:
-    converted['encoder.layers.1.main.0.weight'] = original_model['first_stage_model.encoder.down.0.block.0.norm1.weight']
-    # ... etc for the entire VAE encoder
-
-    # VAE Decoder Mapping
-    converted['decoder.layers.0.weight'] = original_model['first_stage_model.post_quant_conv.weight']
-    converted['decoder.layers.0.bias'] = original_model['first_stage_model.post_quant_conv.bias']
-    # ... Continue mapping for all decoder layers
-    # Example for a mid block:
-    converted['decoder.layers.2.main.0.weight'] = original_model['first_stage_model.decoder.mid.block_1.norm1.weight']
-    # ... etc for the entire VAE decoder
-
-    # CLIP Model Mapping
-    converted['clip.embedding.weight'] = original_model['cond_stage_model.transformer.text_model.embeddings.token_embedding.weight']
-    converted['clip.pos_embedding'] = original_model['cond_stage_model.transformer.text_model.embeddings.position_embedding.weight']
+#================================================================================#
+    #                              CLIP Model Mapping                                #
+    #================================================================================#
+    clip_converted = converted['clip']
+    clip_converted['embedding.weight'] = original_model['cond_stage_model.transformer.text_model.embeddings.token_embedding.weight']
+    clip_converted['pos_embedding'] = original_model['cond_stage_model.transformer.text_model.embeddings.position_embedding.weight']
     
     for i in range(12):
-        clip_layer_prefix = f'clip.layers.0.{i}'
-        orig_clip_prefix = f'cond_stage_model.transformer.text_model.encoder.layers.{i}'
+        # Correct prefix, relative to the CLIP model itself
+        layer_prefix = f'layers.{i}'
+        orig_prefix = f'cond_stage_model.transformer.text_model.encoder.layers.{i}'
         
-        converted[f'{clip_layer_prefix}.norm_1.weight'] = original_model[f'{orig_clip_prefix}.layer_norm1.weight']
-        converted[f'{clip_layer_prefix}.norm_1.bias'] = original_model[f'{orig_clip_prefix}.layer_norm1.bias']
+        clip_converted[f'{layer_prefix}.norm_1.weight'] = original_model[f'{orig_prefix}.layer_norm1.weight']
+        clip_converted[f'{layer_prefix}.norm_1.bias'] = original_model[f'{orig_prefix}.layer_norm1.bias']
 
-        q_w = original_model[f'{orig_clip_prefix}.self_attn.q_proj.weight']
-        k_w = original_model[f'{orig_clip_prefix}.self_attn.k_proj.weight']
-        v_w = original_model[f'{orig_clip_prefix}.self_attn.v_proj.weight']
-        converted[f'{clip_layer_prefix}.attention.qkv.weight'] = torch.cat([q_w, k_w, v_w], dim=0)
+        q_w = original_model[f'{orig_prefix}.self_attn.q_proj.weight']
+        k_w = original_model[f'{orig_prefix}.self_attn.k_proj.weight']
+        v_w = original_model[f'{orig_prefix}.self_attn.v_proj.weight']
+        clip_converted[f'{layer_prefix}.attention.qkv.weight'] = torch.cat([q_w, k_w, v_w])
         
-        converted[f'{clip_layer_prefix}.attention.wo.weight'] = original_model[f'{orig_clip_prefix}.self_attn.out_proj.weight']
-        converted[f'{clip_layer_prefix}.attention.wo.bias'] = original_model[f'{orig_clip_prefix}.self_attn.out_proj.bias']
+        clip_converted[f'{layer_prefix}.attention.wo.weight'] = original_model[f'{orig_prefix}.self_attn.out_proj.weight']
 
-        converted[f'{clip_layer_prefix}.norm_2.weight'] = original_model[f'{orig_clip_prefix}.layer_norm2.weight']
-        converted[f'{clip_layer_prefix}.norm_2.bias'] = original_model[f'{orig_clip_prefix}.layer_norm2.bias']
-        converted[f'{clip_layer_prefix}.up.weight'] = original_model[f'{orig_clip_prefix}.mlp.fc1.weight']
-        converted[f'{clip_layer_prefix}.up.bias'] = original_model[f'{orig_clip_prefix}.mlp.fc1.bias']
-        converted[f'{clip_layer_prefix}.down.weight'] = original_model[f'{orig_clip_prefix}.mlp.fc2.weight']
-        converted[f'{clip_layer_prefix}.down.bias'] = original_model[f'{orig_clip_prefix}.mlp.fc2.bias']
+        clip_converted[f'{layer_prefix}.norm_2.weight'] = original_model[f'{orig_prefix}.layer_norm2.weight']
+        clip_converted[f'{layer_prefix}.norm_2.bias'] = original_model[f'{orig_prefix}.layer_norm2.bias']
+        clip_converted[f'{layer_prefix}.up.weight'] = original_model[f'{orig_prefix}.mlp.fc1.weight']
+        clip_converted[f'{layer_prefix}.up.bias'] = original_model[f'{orig_prefix}.mlp.fc1.bias']
+        clip_converted[f'{layer_prefix}.down.weight'] = original_model[f'{orig_prefix}.mlp.fc2.weight']
+        clip_converted[f'{layer_prefix}.down.bias'] = original_model[f'{orig_prefix}.mlp.fc2.bias']
 
-    converted['clip.layernorm.weight'] = original_model['cond_stage_model.transformer.text_model.final_layer_norm.weight']
-    converted['clip.layernorm.bias'] = original_model['cond_stage_model.transformer.text_model.final_layer_norm.bias']
+    clip_converted['layernorm.weight'] = original_model['cond_stage_model.transformer.text_model.final_layer_norm.weight']
+    clip_converted['layernorm.bias'] = original_model['cond_stage_model.transformer.text_model.final_layer_norm.bias']
+
+    #================================================================================#
+    #                             VAE Encoder Mapping                                #
+    #================================================================================#
+    enc = converted['encoder']
+    o_enc = 'first_stage_model.encoder'
+    
+    enc['layers.0.weight'] = original_model[f'{o_enc}.conv_in.weight']
+    enc['layers.0.bias'] = original_model[f'{o_enc}.conv_in.bias']
+
+    map_vae_residual_block(enc, 'layers.1', f'{o_enc}.down.0.block.0', original_model)
+    map_vae_residual_block(enc, 'layers.2', f'{o_enc}.down.0.block.1', original_model)
+    enc['layers.3.weight'] = original_model[f'{o_enc}.down.0.downsample.conv.weight']
+    enc['layers.3.bias'] = original_model[f'{o_enc}.down.0.downsample.conv.bias']
+
+    map_vae_residual_block(enc, 'layers.4', f'{o_enc}.down.1.block.0', original_model)
+    map_vae_residual_block(enc, 'layers.5', f'{o_enc}.down.1.block.1', original_model)
+    enc['layers.6.weight'] = original_model[f'{o_enc}.down.1.downsample.conv.weight']
+    enc['layers.6.bias'] = original_model[f'{o_enc}.down.1.downsample.conv.bias']
+
+    map_vae_residual_block(enc, 'layers.7', f'{o_enc}.down.2.block.0', original_model)
+    map_vae_residual_block(enc, 'layers.8', f'{o_enc}.down.2.block.1', original_model)
+    enc['layers.9.weight'] = original_model[f'{o_enc}.down.2.downsample.conv.weight']
+    enc['layers.9.bias'] = original_model[f'{o_enc}.down.2.downsample.conv.bias']
+
+    map_vae_residual_block(enc, 'layers.10', f'{o_enc}.down.3.block.0', original_model)
+    map_vae_residual_block(enc, 'layers.11', f'{o_enc}.down.3.block.1', original_model)
+
+    map_vae_residual_block(enc, 'layers.12', f'{o_enc}.mid.block_1', original_model)
+    
+    # Middle Attention - FIXED: Squeeze conv weights to fit linear layers
+    enc['layers.13.group_norm.weight'] = original_model[f'{o_enc}.mid.attn_1.norm.weight']
+    enc['layers.13.group_norm.bias'] = original_model[f'{o_enc}.mid.attn_1.norm.bias']
+    q_w = original_model[f'{o_enc}.mid.attn_1.q.weight'].squeeze()
+    k_w = original_model[f'{o_enc}.mid.attn_1.k.weight'].squeeze()
+    v_w = original_model[f'{o_enc}.mid.attn_1.v.weight'].squeeze()
+    enc['layers.13.attention.qkv.weight'] = torch.cat([q_w, k_w, v_w])
+    enc['layers.13.attention.wo.weight'] = original_model[f'{o_enc}.mid.attn_1.proj_out.weight'].squeeze()
+
+    map_vae_residual_block(enc, 'layers.14', f'{o_enc}.mid.block_2', original_model)
+
+    # Final Layers - FIXED: Correctly map layers 15, 17, and 18, skipping 16 (SiLU)
+    enc['layers.15.weight'] = original_model[f'{o_enc}.norm_out.weight']
+    enc['layers.15.bias'] = original_model[f'{o_enc}.norm_out.bias']
+    # Layer 16 in encoder.py is SiLU, which has no weights, so we skip it.
+    enc['layers.17.weight'] = original_model[f'{o_enc}.conv_out.weight']
+    enc['layers.17.bias'] = original_model[f'{o_enc}.conv_out.bias']
+
+    # Quantizer
+    enc['layers.18.weight'] = original_model['first_stage_model.quant_conv.weight']
+    enc['layers.18.bias'] = original_model['first_stage_model.quant_conv.bias']
+
+#================================================================================#
+    #                             VAE Decoder Mapping                                #
+    #================================================================================#
+    dec = converted['decoder']
+    o_dec = 'first_stage_model.decoder'
+
+    # Initial layers
+    dec['layers.0.weight'] = original_model['first_stage_model.post_quant_conv.weight']
+    dec['layers.0.bias'] = original_model['first_stage_model.post_quant_conv.bias']
+    dec['layers.1.weight'] = original_model[f'{o_dec}.conv_in.weight']
+    dec['layers.1.bias'] = original_model[f'{o_dec}.conv_in.bias']
+
+    # Middle Block
+    map_vae_residual_block(dec, 'layers.2', f'{o_dec}.mid.block_1', original_model)
+    # Middle Attention
+    dec['layers.3.group_norm.weight'] = original_model[f'{o_dec}.mid.attn_1.norm.weight']
+    dec['layers.3.group_norm.bias'] = original_model[f'{o_dec}.mid.attn_1.norm.bias']
+    q_w = original_model[f'{o_dec}.mid.attn_1.q.weight'].squeeze()
+    k_w = original_model[f'{o_dec}.mid.attn_1.k.weight'].squeeze()
+    v_w = original_model[f'{o_dec}.mid.attn_1.v.weight'].squeeze()
+    dec['layers.3.attention.qkv.weight'] = torch.cat([q_w, k_w, v_w])
+    dec['layers.3.attention.wo.weight'] = original_model[f'{o_dec}.mid.attn_1.proj_out.weight'].squeeze()
+    map_vae_residual_block(dec, 'layers.4', f'{o_dec}.mid.block_2', original_model)
+
+    # Up Block 1 (Corresponds to original's up.3)
+    map_vae_residual_block(dec, 'layers.5', f'{o_dec}.up.3.block.0', original_model)
+    map_vae_residual_block(dec, 'layers.6', f'{o_dec}.up.3.block.1', original_model)
+    map_vae_residual_block(dec, 'layers.7', f'{o_dec}.up.3.block.2', original_model)
+    # layers.8 in your model is Upsample, which has no weights.
+    dec['layers.9.weight'] = original_model[f'{o_dec}.up.3.upsample.conv.weight']
+    dec['layers.9.bias'] = original_model[f'{o_dec}.up.3.upsample.conv.bias']
+
+    # Up Block 2 (Corresponds to original's up.2)
+    map_vae_residual_block(dec, 'layers.10', f'{o_dec}.up.2.block.0', original_model)
+    map_vae_residual_block(dec, 'layers.11', f'{o_dec}.up.2.block.1', original_model)
+    map_vae_residual_block(dec, 'layers.12', f'{o_dec}.up.2.block.2', original_model)
+    # layers.13 is Upsample
+    dec['layers.14.weight'] = original_model[f'{o_dec}.up.2.upsample.conv.weight']
+    dec['layers.14.bias'] = original_model[f'{o_dec}.up.2.upsample.conv.bias']
+
+    # Up Block 3 (Corresponds to original's up.1)
+    map_vae_residual_block(dec, 'layers.15', f'{o_dec}.up.1.block.0', original_model)
+    map_vae_residual_block(dec, 'layers.16', f'{o_dec}.up.1.block.1', original_model)
+    map_vae_residual_block(dec, 'layers.17', f'{o_dec}.up.1.block.2', original_model)
+    # layers.18 is Upsample
+    dec['layers.19.weight'] = original_model[f'{o_dec}.up.1.upsample.conv.weight']
+    dec['layers.19.bias'] = original_model[f'{o_dec}.up.1.upsample.conv.bias']
+
+    # Up Block 4 (Corresponds to original's up.0)
+    map_vae_residual_block(dec, 'layers.20', f'{o_dec}.up.0.block.0', original_model)
+    map_vae_residual_block(dec, 'layers.21', f'{o_dec}.up.0.block.1', original_model)
+    map_vae_residual_block(dec, 'layers.22', f'{o_dec}.up.0.block.2', original_model)
+    
+    # Final Layers
+    dec['layers.23.weight'] = original_model[f'{o_dec}.norm_out.weight']
+    dec['layers.23.bias'] = original_model[f'{o_dec}.norm_out.bias']
+    # Layer 24 is SiLU
+    dec['layers.25.weight'] = original_model[f'{o_dec}.conv_out.weight']
+    dec['layers.25.bias'] = original_model[f'{o_dec}.conv_out.bias']
+    # Layer 26 is Tanh
+    
+    #================================================================================#
+    #                           Diffusion U-Net Mapping                              #
+    #================================================================================#
+    diff = converted['diffusion']
+    o_diff = 'model.diffusion_model'
+
+    diff['time_embedding.up.weight'] = original_model[f'{o_diff}.time_embed.0.weight']
+    diff['time_embedding.up.bias'] = original_model[f'{o_diff}.time_embed.0.bias']
+    diff['time_embedding.out.weight'] = original_model[f'{o_diff}.time_embed.2.weight']
+    diff['time_embedding.out.bias'] = original_model[f'{o_diff}.time_embed.2.bias']
+
+    diff['unet.encoders.0.0.weight'] = original_model[f'{o_diff}.input_blocks.0.0.weight']
+    diff['unet.encoders.0.0.bias'] = original_model[f'{o_diff}.input_blocks.0.0.bias']
+    
+    encoder_block_indices = [1, 2, 4, 5, 7, 8, 10, 11]
+    original_input_blocks = [1, 2, 4, 5, 7, 8, 10, 11]
+
+    for i, b in zip(encoder_block_indices, original_input_blocks):
+        res_prefix = f'unet.encoders.{i}.0'
+        orig_res_prefix = f'{o_diff}.input_blocks.{b}.0'
+        diff[f'{res_prefix}.group_norm_first.weight'] = original_model[f'{orig_res_prefix}.in_layers.0.weight']
+        diff[f'{res_prefix}.group_norm_first.bias'] = original_model[f'{orig_res_prefix}.in_layers.0.bias']
+        diff[f'{res_prefix}.conv_first.weight'] = original_model[f'{orig_res_prefix}.in_layers.2.weight']
+        diff[f'{res_prefix}.conv_first.bias'] = original_model[f'{orig_res_prefix}.in_layers.2.bias']
+        diff[f'{res_prefix}.linear_time.weight'] = original_model[f'{orig_res_prefix}.emb_layers.1.weight']
+        diff[f'{res_prefix}.linear_time.bias'] = original_model[f'{orig_res_prefix}.emb_layers.1.bias']
+        diff[f'{res_prefix}.group_norm_merged.weight'] = original_model[f'{orig_res_prefix}.out_layers.0.weight']
+        diff[f'{res_prefix}.group_norm_merged.bias'] = original_model[f'{orig_res_prefix}.out_layers.0.bias']
+        diff[f'{res_prefix}.conv_merged.weight'] = original_model[f'{orig_res_prefix}.out_layers.3.weight']
+        diff[f'{res_prefix}.conv_merged.bias'] = original_model[f'{orig_res_prefix}.out_layers.3.bias']
+        if f'{orig_res_prefix}.skip_connection.weight' in original_model:
+            diff[f'{res_prefix}.res_layer.weight'] = original_model[f'{orig_res_prefix}.skip_connection.weight']
+            diff[f'{res_prefix}.res_layer.bias'] = original_model[f'{orig_res_prefix}.skip_connection.bias']
+
+        orig_attn_prefix = f'{o_diff}.input_blocks.{b}.1'
+        if f'{orig_attn_prefix}.norm.weight' in original_model:
+            attn_prefix = f'unet.encoders.{i}.1'
+            diff[f'{attn_prefix}.group_norm.weight'] = original_model[f'{orig_attn_prefix}.norm.weight']
+            diff[f'{attn_prefix}.group_norm.bias'] = original_model[f'{orig_attn_prefix}.norm.bias']
+            diff[f'{attn_prefix}.conv_in.weight'] = original_model[f'{orig_attn_prefix}.proj_in.weight']
+            diff[f'{attn_prefix}.conv_in.bias'] = original_model[f'{orig_attn_prefix}.proj_in.bias']
+            diff[f'{attn_prefix}.layer_norm_1.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm1.weight']
+            diff[f'{attn_prefix}.layer_norm_1.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm1.bias']
+            
+            q_w, k_w, v_w = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn1.to_q.weight'], original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn1.to_k.weight'], original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn1.to_v.weight']
+            diff[f'{attn_prefix}.attention_1.qkv.weight'] = torch.cat([q_w, k_w, v_w])
+            diff[f'{attn_prefix}.attention_1.wo.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn1.to_out.0.weight']
+            diff[f'{attn_prefix}.attention_1.wo.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn1.to_out.0.bias']
+            
+            diff[f'{attn_prefix}.layer_norm_2.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm2.weight']
+            diff[f'{attn_prefix}.layer_norm_2.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm2.bias']
+            
+            diff[f'{attn_prefix}.attention_2.q.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_q.weight']
+            k_w_c, v_w_c = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_k.weight'], original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_v.weight']
+            diff[f'{attn_prefix}.attention_2.kv.weight'] = torch.cat([k_w_c, v_w_c])
+            diff[f'{attn_prefix}.attention_2.wo.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_out.0.weight']
+            diff[f'{attn_prefix}.attention_2.wo.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_out.0.bias']
+
+            diff[f'{attn_prefix}.layer_norm_3.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm3.weight']
+            diff[f'{attn_prefix}.layer_norm_3.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm3.bias']
+            diff[f'{attn_prefix}.linear_geglu_1.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.ff.net.0.proj.weight']
+            diff[f'{attn_prefix}.linear_geglu_1.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.ff.net.0.proj.bias']
+            diff[f'{attn_prefix}.linear_geglu_2.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.ff.net.2.weight']
+            diff[f'{attn_prefix}.linear_geglu_2.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.ff.net.2.bias']
+            diff[f'{attn_prefix}.conv_out.weight'] = original_model[f'{orig_attn_prefix}.proj_out.weight']
+            diff[f'{attn_prefix}.conv_out.bias'] = original_model[f'{orig_attn_prefix}.proj_out.bias']
+
+    downsample_map = {3: 3, 6: 6, 9: 9} # Note: original script had 9:9 but your encoder has 10,11. Assuming this is for input_blocks 3, 6, 9.
+    for i, b in downsample_map.items():
+        diff[f'unet.encoders.{i}.0.weight'] = original_model[f'{o_diff}.input_blocks.{b}.0.op.weight']
+        diff[f'unet.encoders.{i}.0.bias'] = original_model[f'{o_diff}.input_blocks.{b}.0.op.bias']
+
+    #================================================================================#
+    #                           Diffusion U-Net Middle Block                         #
+    #================================================================================#
+    
+    # Middle Block - First Residual
+    res_prefix = 'unet.bottom.0'
+    orig_res_prefix = f'{o_diff}.middle_block.0'
+    diff[f'{res_prefix}.group_norm_first.weight'] = original_model[f'{orig_res_prefix}.in_layers.0.weight']
+    diff[f'{res_prefix}.group_norm_first.bias'] = original_model[f'{orig_res_prefix}.in_layers.0.bias']
+    diff[f'{res_prefix}.conv_first.weight'] = original_model[f'{orig_res_prefix}.in_layers.2.weight'] # Note: No ".0" here
+    diff[f'{res_prefix}.conv_first.bias'] = original_model[f'{orig_res_prefix}.in_layers.2.bias']
+    diff[f'{res_prefix}.linear_time.weight'] = original_model[f'{orig_res_prefix}.emb_layers.1.weight']
+    diff[f'{res_prefix}.linear_time.bias'] = original_model[f'{orig_res_prefix}.emb_layers.1.bias']
+    diff[f'{res_prefix}.group_norm_merged.weight'] = original_model[f'{orig_res_prefix}.out_layers.0.weight']
+    diff[f'{res_prefix}.group_norm_merged.bias'] = original_model[f'{orig_res_prefix}.out_layers.0.bias']
+    diff[f'{res_prefix}.conv_merged.weight'] = original_model[f'{orig_res_prefix}.out_layers.3.weight']
+    diff[f'{res_prefix}.conv_merged.bias'] = original_model[f'{orig_res_prefix}.out_layers.3.bias']
+
+    # Middle Block - Attention
+    attn_prefix = 'unet.bottom.1'
+    orig_attn_prefix = f'{o_diff}.middle_block.1'
+    diff[f'{attn_prefix}.group_norm.weight'] = original_model[f'{orig_attn_prefix}.norm.weight']
+    diff[f'{attn_prefix}.group_norm.bias'] = original_model[f'{orig_attn_prefix}.norm.bias']
+    diff[f'{attn_prefix}.conv_in.weight'] = original_model[f'{orig_attn_prefix}.proj_in.weight']
+    diff[f'{attn_prefix}.conv_in.bias'] = original_model[f'{orig_attn_prefix}.proj_in.bias']
+    diff[f'{attn_prefix}.layer_norm_1.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm1.weight']
+    diff[f'{attn_prefix}.layer_norm_1.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm1.bias']
+    q_w, k_w, v_w = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn1.to_q.weight'], original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn1.to_k.weight'], original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn1.to_v.weight']
+    diff[f'{attn_prefix}.attention_1.qkv.weight'] = torch.cat([q_w, k_w, v_w])
+    diff[f'{attn_prefix}.attention_1.wo.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn1.to_out.0.weight']
+    diff[f'{attn_prefix}.attention_1.wo.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn1.to_out.0.bias']
+    diff[f'{attn_prefix}.layer_norm_2.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm2.weight']
+    diff[f'{attn_prefix}.layer_norm_2.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm2.bias']
+    diff[f'{attn_prefix}.attention_2.q.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_q.weight']
+    k_w_c, v_w_c = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_k.weight'], original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_v.weight']
+    diff[f'{attn_prefix}.attention_2.kv.weight'] = torch.cat([k_w_c, v_w_c])
+    diff[f'{attn_prefix}.attention_2.wo.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_out.0.weight']
+    diff[f'{attn_prefix}.attention_2.wo.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_out.0.bias']
+    diff[f'{attn_prefix}.layer_norm_3.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm3.weight']
+    diff[f'{attn_prefix}.layer_norm_3.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm3.bias']
+    diff[f'{attn_prefix}.linear_geglu_1.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.ff.net.0.proj.weight']
+    diff[f'{attn_prefix}.linear_geglu_1.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.ff.net.0.proj.bias']
+    diff[f'{attn_prefix}.linear_geglu_2.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.ff.net.2.weight']
+    diff[f'{attn_prefix}.linear_geglu_2.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.ff.net.2.bias']
+    diff[f'{attn_prefix}.conv_out.weight'] = original_model[f'{orig_attn_prefix}.proj_out.weight']
+    diff[f'{attn_prefix}.conv_out.bias'] = original_model[f'{orig_attn_prefix}.proj_out.bias']
+
+    # Middle Block - Second Residual
+    res_prefix = 'unet.bottom.2'
+    orig_res_prefix = f'{o_diff}.middle_block.2'
+    diff[f'{res_prefix}.group_norm_first.weight'] = original_model[f'{orig_res_prefix}.in_layers.0.weight']
+    diff[f'{res_prefix}.group_norm_first.bias'] = original_model[f'{orig_res_prefix}.in_layers.0.bias']
+    diff[f'{res_prefix}.conv_first.weight'] = original_model[f'{orig_res_prefix}.in_layers.2.weight'] # Note: No ".0"
+    diff[f'{res_prefix}.conv_first.bias'] = original_model[f'{orig_res_prefix}.in_layers.2.bias']
+    diff[f'{res_prefix}.linear_time.weight'] = original_model[f'{orig_res_prefix}.emb_layers.1.weight']
+    diff[f'{res_prefix}.linear_time.bias'] = original_model[f'{orig_res_prefix}.emb_layers.1.bias']
+    diff[f'{res_prefix}.group_norm_merged.weight'] = original_model[f'{orig_res_prefix}.out_layers.0.weight']
+    diff[f'{res_prefix}.group_norm_merged.bias'] = original_model[f'{orig_res_prefix}.out_layers.0.bias']
+    diff[f'{res_prefix}.conv_merged.weight'] = original_model[f'{orig_res_prefix}.out_layers.3.weight']
+    diff[f'{res_prefix}.conv_merged.bias'] = original_model[f'{orig_res_prefix}.out_layers.3.bias']
+    
+    #================================================================================#
+    #                           Diffusion U-Net Decoder                              #
+    #================================================================================#
+    decoder_block_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    original_output_blocks = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+
+    for i, b in zip(decoder_block_indices, original_output_blocks):
+        # --- Map Residual Block (sub-module 0) ---
+        res_prefix = f'unet.decoders.{i}.0'
+        orig_res_prefix = f'{o_diff}.output_blocks.{b}.0'
+        
+        diff[f'{res_prefix}.group_norm_first.weight'] = original_model[f'{orig_res_prefix}.in_layers.0.weight']
+        diff[f'{res_prefix}.group_norm_first.bias'] = original_model[f'{orig_res_prefix}.in_layers.0.bias']
+        diff[f'{res_prefix}.conv_first.weight'] = original_model[f'{orig_res_prefix}.in_layers.2.weight']
+        diff[f'{res_prefix}.conv_first.bias'] = original_model[f'{orig_res_prefix}.in_layers.2.bias']
+        diff[f'{res_prefix}.linear_time.weight'] = original_model[f'{orig_res_prefix}.emb_layers.1.weight']
+        diff[f'{res_prefix}.linear_time.bias'] = original_model[f'{orig_res_prefix}.emb_layers.1.bias']
+        diff[f'{res_prefix}.group_norm_merged.weight'] = original_model[f'{orig_res_prefix}.out_layers.0.weight']
+        diff[f'{res_prefix}.group_norm_merged.bias'] = original_model[f'{orig_res_prefix}.out_layers.0.bias']
+        diff[f'{res_prefix}.conv_merged.weight'] = original_model[f'{orig_res_prefix}.out_layers.3.weight']
+        diff[f'{res_prefix}.conv_merged.bias'] = original_model[f'{orig_res_prefix}.out_layers.3.bias']
+        if f'{orig_res_prefix}.skip_connection.weight' in original_model:
+            diff[f'{res_prefix}.res_layer.weight'] = original_model[f'{orig_res_prefix}.skip_connection.weight']
+            diff[f'{res_prefix}.res_layer.bias'] = original_model[f'{orig_res_prefix}.skip_connection.bias']
+
+        # --- Conditionally Map Attention Block (sub-module 1) ---
+        orig_attn_prefix = f'{o_diff}.output_blocks.{b}.1'
+        if f'{orig_attn_prefix}.norm.weight' in original_model:
+            attn_prefix = f'unet.decoders.{i}.1'
+            diff[f'{attn_prefix}.group_norm.weight'] = original_model[f'{orig_attn_prefix}.norm.weight']
+            diff[f'{attn_prefix}.group_norm.bias'] = original_model[f'{orig_attn_prefix}.norm.bias']
+            diff[f'{attn_prefix}.conv_in.weight'] = original_model[f'{orig_attn_prefix}.proj_in.weight']
+            diff[f'{attn_prefix}.conv_in.bias'] = original_model[f'{orig_attn_prefix}.proj_in.bias']
+            diff[f'{attn_prefix}.layer_norm_1.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm1.weight']
+            diff[f'{attn_prefix}.layer_norm_1.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm1.bias']
+            q_w, k_w, v_w = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn1.to_q.weight'], original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn1.to_k.weight'], original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn1.to_v.weight']
+            diff[f'{attn_prefix}.attention_1.qkv.weight'] = torch.cat([q_w, k_w, v_w])
+            diff[f'{attn_prefix}.attention_1.wo.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn1.to_out.0.weight']
+            diff[f'{attn_prefix}.attention_1.wo.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn1.to_out.0.bias']
+            diff[f'{attn_prefix}.layer_norm_2.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm2.weight']
+            diff[f'{attn_prefix}.layer_norm_2.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm2.bias']
+            diff[f'{attn_prefix}.attention_2.q.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_q.weight']
+            k_w_c, v_w_c = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_k.weight'], original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_v.weight']
+            diff[f'{attn_prefix}.attention_2.kv.weight'] = torch.cat([k_w_c, v_w_c])
+            diff[f'{attn_prefix}.attention_2.wo.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_out.0.weight']
+            diff[f'{attn_prefix}.attention_2.wo.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.attn2.to_out.0.bias']
+            diff[f'{attn_prefix}.layer_norm_3.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm3.weight']
+            diff[f'{attn_prefix}.layer_norm_3.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.norm3.bias']
+            diff[f'{attn_prefix}.linear_geglu_1.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.ff.net.0.proj.weight']
+            diff[f'{attn_prefix}.linear_geglu_1.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.ff.net.0.proj.bias']
+            diff[f'{attn_prefix}.linear_geglu_2.weight'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.ff.net.2.weight']
+            diff[f'{attn_prefix}.linear_geglu_2.bias'] = original_model[f'{orig_attn_prefix}.transformer_blocks.0.ff.net.2.bias']
+            diff[f'{attn_prefix}.conv_out.weight'] = original_model[f'{orig_attn_prefix}.proj_out.weight']
+            diff[f'{attn_prefix}.conv_out.bias'] = original_model[f'{orig_attn_prefix}.proj_out.bias']
+    
+        # --- Conditionally Map Upsample Block (sub-module 2) ---
+        # The upsampler has a different key depending on whether an attention block exists
+        upsample_sub_idx = 2 if f'{o_diff}.output_blocks.{b}.1.norm.weight' in original_model else 1
+        orig_upsample_prefix = f'{o_diff}.output_blocks.{b}.{upsample_sub_idx}'
+        if f'{orig_upsample_prefix}.conv.weight' in original_model:
+            upsample_prefix = f'unet.decoders.{i}.{upsample_sub_idx}' # The index in our model matches the original
+            diff[f'{upsample_prefix}.weight'] = original_model[f'{orig_upsample_prefix}.conv.weight']
+            diff[f'{upsample_prefix}.bias'] = original_model[f'{orig_upsample_prefix}.conv.bias']
+    #================================================================================#
+    #                           Diffusion U-Net Final Layer                          #
+    #================================================================================#
+    diff['final.norm.weight'] = original_model[f'{o_diff}.out.0.weight']
+    diff['final.norm.bias'] = original_model[f'{o_diff}.out.0.bias']
+    diff['final.conv.weight'] = original_model[f'{o_diff}.out.2.weight']
+    diff['final.conv.bias'] = original_model[f'{o_diff}.out.2.bias']
 
     return converted
-    

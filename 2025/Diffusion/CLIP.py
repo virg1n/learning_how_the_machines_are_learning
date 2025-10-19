@@ -11,7 +11,7 @@ class CLIP_Layer(nn.Module):
         if n_hidden_dims is None: n_hidden_dims = 4 * n_dims
 
         self.norm_1 = nn.LayerNorm(n_dims)
-        self.attention = SelfAttention(n_dims, n_heads, use_causal_mask=True)
+        self.attention = SelfAttention(n_dims, n_heads)
 
         self.norm_2 = nn.LayerNorm(n_dims)
         self.up = nn.Linear(n_dims, n_hidden_dims)
@@ -21,7 +21,7 @@ class CLIP_Layer(nn.Module):
         residue = x
 
         x = self.norm_1(x)
-        x = self.attention(x)
+        x = self.attention(x, use_causal_mask=True)
 
         x = x + residue
         residue = x
@@ -40,7 +40,7 @@ class CLIP(nn.Module):
     def __init__(self, vocab_size, n_dims, n_tokens, n_heads):
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, n_dims)
-        self.pos_embedding = nn.Parameter(torch.zeros(1, n_tokens, n_dims))
+        self.pos_embedding = nn.Parameter(torch.zeros(n_tokens, n_dims))
 
         self.layers = nn.Sequential(*[CLIP_Layer(n_heads, n_dims) for _ in range(12)])
 

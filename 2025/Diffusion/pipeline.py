@@ -10,7 +10,7 @@ HEIGHT = 512
 LATENTS_WIDTH = WIDTH // 8
 LATENTS_HEIGHT = HEIGHT // 8
 
-def generate(prompt, neg_promt=None,
+def generate(prompt, neg_promt="",
         input_image=None,
         strength=0.8,
         do_cfg=True,
@@ -43,23 +43,22 @@ def generate(prompt, neg_promt=None,
         clip = models['clip']
         clip.to(device)
 
-        if do_cfg and neg_promt is None: do_cfg = False
+        clip.to(device)
+        clip.eval()
+        for p in clip.parameters():
+            p.requires_grad_(False)
 
         if do_cfg:
-            pos_tokens = tokenizer.batch_encode_plus(
-                [prompt], padding="max_length", max_length=prompt_max_length
-            ).input_ids
-            pos_tokens = torch.tensor(pos_tokens, dtype=torch.long ,device=device)
+            pos_tokens = tokenizer.batch_encode_plus([prompt], padding="max_length", max_length=prompt_max_length).input_ids
+            neg_tokens = tokenizer.batch_encode_plus([neg_promt], padding="max_length", max_length=prompt_max_length).input_ids
+            pos_tokens = torch.tensor(pos_tokens, dtype=torch.long, device=device)
+            neg_tokens = torch.tensor(neg_tokens, dtype=torch.long, device=device)
+        
             pos_context = clip(pos_tokens)
-
-
-            neg_tokens = tokenizer.batch_encode_plus(
-                [neg_promt], padding="max_length", max_length=prompt_max_length
-            ).input_ids
-            neg_tokens = torch.tensor(neg_tokens, dtype=torch.long ,device=device)
             neg_context = clip(neg_tokens)
-
-            context = torch.cat([pos_context, neg_context])
+        
+            # put UNCOND FIRST to match the canonical formula
+            context = torch.cat([neg_context, pos_context], dim=0)
 
         else:
             pos_tokens = tokenizer.batch_encode_plus(
@@ -100,19 +99,26 @@ def generate(prompt, neg_promt=None,
         diffusion = models['diffusion']
         diffusion.to(device)
 
-        timestamps = tqdm(sampler.timesteps)
-        for i, step in enumerate(timestamps):
+        # timestamps = tqdm(sampler.timesteps)
+        for step in tqdm(sampler.steps):
             time_embedded = get_time_embedding(step).to(device)
 
             model_input = latents
             if do_cfg:
                 model_input = model_input.repeat(2, 1, 1, 1) # 2*B, C, W, H 
-
+            
             noise = diffusion(model_input, context ,time_embedded)
+            
+            # if do_cfg:
+            #     uncond, cond = noise.chunk(2)
+            #     delta = (cond - uncond).pow(2).mean().sqrt().item()
+            #     print(f"step {int(step):4d}  ||cond - uncond|| = {delta:.6f}")
 
             if do_cfg:
-                pos_image, neg_image = noise.chunk(2)
-                noise = cfg_scale * (pos_image - neg_image) + neg_image # 1*B, C, W, H 
+                uncond, cond = noise.chunk(2)
+                noise = uncond + cfg_scale * (cond - uncond)
+                # pos_image, neg_image = noise.chunk(2)
+                # noise = cfg_scale * (pos_image - neg_image) + neg_image # 1*B, C, W, H 
 
             latents = sampler.step(step, latents, noise)
         

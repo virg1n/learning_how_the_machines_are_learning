@@ -39,10 +39,10 @@ class UNET_Attention(nn.Module):
         self.conv_in = nn.Conv2d(channels, channels, 1)
 
         self.layer_norm_1 = nn.LayerNorm(channels)
-        self.attention_1 = SelfAttention(channels, n_heads)
+        self.attention_1 = SelfAttention(channels, n_heads, bias=True)
 
         self.layer_norm_2 = nn.LayerNorm(channels)
-        self.attention_2 = CrossAttention(channels, n_heads, dim_prompt)
+        self.attention_2 = CrossAttention(channels, n_heads, dim_prompt, bias=True)
 
         self.layer_norm_3 = nn.LayerNorm(channels)
         self.linear_geglu_1 = nn.Linear(channels, 4 * channels * 2)
@@ -67,7 +67,7 @@ class UNET_Attention(nn.Module):
 
         short_residue = x
         x = self.layer_norm_2(x)
-        x = self.attention_2(x)
+        x = self.attention_2(x, prompt)
 
         x = x + short_residue
 
@@ -91,7 +91,7 @@ class UNET_ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, dim_time):
         super().__init__()
         self.group_norm_first = nn.GroupNorm(32, in_channels)
-        self.conv_first = nn.Conv2d(in_channels, out_channels, 3, padding=1),
+        self.conv_first = nn.Conv2d(in_channels, out_channels, 3, padding=1)
         # self.first = nn.Sequential(
         #     nn.GroupNorm(32, in_channels),
         #     # nn.SiLU(),s
@@ -157,7 +157,7 @@ class UNET(nn.Module):
 
         self.bottom = MySequential(
             UNET_ResidualBlock(hiddens_channels*4, hiddens_channels*4, dim_time),
-            UNET_Attention(8, attn_emb*4),
+            UNET_Attention(8, attn_emb*4, dim_prompt),
             UNET_ResidualBlock(hiddens_channels*4, hiddens_channels*4, dim_time)
         )
 
@@ -176,7 +176,7 @@ class UNET(nn.Module):
 
             MySequential(UNET_ResidualBlock(hiddens_channels*3, hiddens_channels*1, dim_time), UNET_Attention(8, attn_emb, dim_prompt)),
             MySequential(UNET_ResidualBlock(hiddens_channels*2, hiddens_channels*1, dim_time), UNET_Attention(8, attn_emb, dim_prompt)),
-            MySequential(UNET_ResidualBlock(hiddens_channels*1, hiddens_channels*1, dim_time), UNET_Attention(8, attn_emb, dim_prompt)),
+            MySequential(UNET_ResidualBlock(hiddens_channels*2, hiddens_channels*1, dim_time), UNET_Attention(8, attn_emb, dim_prompt)),
         ])
 
     def forward(self, x, prompt, time):
