@@ -39,10 +39,10 @@ class UNET_Attention(nn.Module):
         self.conv_in = nn.Conv2d(channels, channels, 1)
 
         self.layer_norm_1 = nn.LayerNorm(channels)
-        self.attention_1 = SelfAttention(channels, n_heads, bias=True)
+        self.attention_1 = SelfAttention(channels, n_heads, in_proj_bias=False)
 
         self.layer_norm_2 = nn.LayerNorm(channels)
-        self.attention_2 = CrossAttention(channels, n_heads, dim_prompt, bias=True)
+        self.attention_2 = CrossAttention(channels, n_heads, dim_prompt, in_proj_bias=False)
 
         self.layer_norm_3 = nn.LayerNorm(channels)
         self.linear_geglu_1 = nn.Linear(channels, 4 * channels * 2)

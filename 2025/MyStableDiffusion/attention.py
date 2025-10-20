@@ -5,10 +5,10 @@ import torch.nn.functional as F
 
 
 class SelfAttention(nn.Module):
-    def __init__(self, dims, n_heads, bias=False):
+    def __init__(self, dims, n_heads, in_proj_bias=True, out_proj_bias=True):
         super().__init__()
-        self.qkv = nn.Linear(dims, 3*dims, bias=False)
-        self.wo = nn.Linear(dims, dims, bias=bias)
+        self.qkv = nn.Linear(dims, 3*dims, bias=in_proj_bias)
+        self.wo = nn.Linear(dims, dims, bias=out_proj_bias)
 
         self.n_heads = n_heads
         self.head_dim = dims//n_heads
@@ -27,7 +27,7 @@ class SelfAttention(nn.Module):
 
         if use_causal_mask:
             mask = torch.ones_like(attention, dtype=torch.bool).triu(1) 
-            attention.masked_fill_(mask, -1e9) 
+            attention.masked_fill_(mask, -torch.inf) 
 
         attention = F.softmax(attention, dim=-1)
         output = torch.matmul(attention, v)
@@ -40,11 +40,11 @@ class SelfAttention(nn.Module):
 
 
 class CrossAttention(nn.Module):
-    def __init__(self, dims, n_heads, other_dims, bias=False):
+    def __init__(self, dims, n_heads, other_dims, in_proj_bias=True, out_proj_bias=True):
         super().__init__()
-        self.kv = nn.Linear(other_dims, 2 * dims, bias=False)
-        self.q = nn.Linear(dims, dims, bias=False)
-        self.wo = nn.Linear(dims, dims, bias=bias)
+        self.kv = nn.Linear(other_dims, 2 * dims, bias=in_proj_bias)
+        self.q = nn.Linear(dims, dims, bias=in_proj_bias)
+        self.wo = nn.Linear(dims, dims, bias=out_proj_bias)
 
         self.n_heads = n_heads
         self.head_dim = dims//n_heads

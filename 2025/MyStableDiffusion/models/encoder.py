@@ -37,13 +37,13 @@ class VAE_Attention_Layer(nn.Module):
         self.attention = SelfAttention(channels, 1)
 
     def forward(self, x):
-        # x = (B, 512, W, H)
+        # x = (B, input_dims * 4, W, H)
         residue = x
         x = self.group_norm(x)
 
         b, c, w, h = x.shape
         x = x.view(b, c, w * h)
-        x = x.transpose(-1, -2) # (B, W * H, 512)
+        x = x.transpose(-1, -2) # (B, W * H, input_dims * 4)
 
         x = self.attention(x)
 
@@ -54,33 +54,33 @@ class VAE_Attention_Layer(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, in_channels=3):
+    def __init__(self, in_channels=3, input_dims=128):
         super().__init__()
         self.layers = nn.ModuleList([
             nn.Conv2d(in_channels, 128, 3, padding=1),      # (B, 128, W, H)
-            VAE_Residual_Layer(128, 128),
-            VAE_Residual_Layer(128, 128),
+            VAE_Residual_Layer(input_dims, input_dims),
+            VAE_Residual_Layer(input_dims, input_dims),
             
-            nn.Conv2d(128, 128, 3, stride=2, padding=1),    # (B, 128, W/2, H/2)
-            VAE_Residual_Layer(128, 256),
-            VAE_Residual_Layer(256, 256),
+            nn.Conv2d(input_dims, input_dims, 3, stride=2, padding=1),    # (B, 128, W/2, H/2)
+            VAE_Residual_Layer(input_dims, input_dims * 2),
+            VAE_Residual_Layer(input_dims * 2, input_dims * 2),
 
-            nn.Conv2d(256, 256, 3, stride=2, padding=1),    # (B, 256, W/4, H/4)
-            VAE_Residual_Layer(256, 512),
-            VAE_Residual_Layer(512, 512),
+            nn.Conv2d(input_dims * 2, input_dims * 2, 3, stride=2, padding=1),    # (B, 128 * 2, W/4, H/4)
+            VAE_Residual_Layer(input_dims * 2, input_dims * 4),
+            VAE_Residual_Layer(input_dims * 4, input_dims * 4),
 
-            nn.Conv2d(512, 512, 3, stride=2, padding=1),    # (B, 512, W/8, H/8)
-            VAE_Residual_Layer(512, 512),
-            VAE_Residual_Layer(512, 512),
+            nn.Conv2d(input_dims * 4, input_dims * 4, 3, stride=2, padding=1),    # (B, 128 * 4, W/8, H/8)
+            VAE_Residual_Layer(input_dims * 4, input_dims * 4),
+            VAE_Residual_Layer(input_dims * 4, input_dims * 4),
             
-            VAE_Residual_Layer(512, 512),                   # (B, 512, W/8, H/8)
-            VAE_Attention_Layer(512),
+            VAE_Residual_Layer(input_dims * 4, input_dims * 4),                   # (B, 128 * 4, W/8, H/8)
+            VAE_Attention_Layer(input_dims * 4),
 
-            VAE_Residual_Layer(512, 512),                   # (B, 512, W/8, H/8)
-            nn.GroupNorm(32, 512),
+            VAE_Residual_Layer(input_dims * 4, input_dims * 4),                   # (B, 128 * 4, W/8, H/8)
+            nn.GroupNorm(32, input_dims * 4),
             nn.SiLU(),
 
-            nn.Conv2d(512, 8, 3, padding=1),
+            nn.Conv2d(input_dims * 4, 8, 3, padding=1),
             nn.Conv2d(8, 8, 1, padding=0)           # (B, 8, W/8, H/8)
         ]) 
         

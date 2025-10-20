@@ -1,7 +1,7 @@
-from encoder import Encoder
-from decoder import Decoder
-from diffusion import Diffusion
-from CLIP import CLIP
+from models.encoder import Encoder
+from models.decoder import Decoder
+from models.diffusion import Diffusion
+from models.CLIP import CLIP
 
 from conversion_script import load_from_standard_weights
 

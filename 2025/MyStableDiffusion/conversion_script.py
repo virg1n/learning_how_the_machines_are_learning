@@ -3,7 +3,6 @@ import torch
 
 def map_vae_residual_block(converted, custom_prefix, orig_prefix, original_model):
 
-    # Main path
     converted[f'{custom_prefix}.main.0.weight'] = original_model[f'{orig_prefix}.norm1.weight']
     converted[f'{custom_prefix}.main.0.bias'] = original_model[f'{orig_prefix}.norm1.bias']
     converted[f'{custom_prefix}.main.2.weight'] = original_model[f'{orig_prefix}.conv1.weight']
@@ -13,7 +12,6 @@ def map_vae_residual_block(converted, custom_prefix, orig_prefix, original_model
     converted[f'{custom_prefix}.main.5.weight'] = original_model[f'{orig_prefix}.conv2.weight']
     converted[f'{custom_prefix}.main.5.bias'] = original_model[f'{orig_prefix}.conv2.bias']
     
-    # Conditionally map the residual connection if it exists in the original model
     if f'{orig_prefix}.nin_shortcut.weight' in original_model:
         converted[f'{custom_prefix}.res_layer.weight'] = original_model[f'{orig_prefix}.nin_shortcut.weight']
         converted[f'{custom_prefix}.res_layer.bias'] = original_model[f'{orig_prefix}.nin_shortcut.bias']
@@ -42,6 +40,15 @@ def load_from_standard_weights(input_file, device):
         k_w = original_model[f'{orig_prefix}.self_attn.k_proj.weight']
         v_w = original_model[f'{orig_prefix}.self_attn.v_proj.weight']
         clip_converted[f'{layer_prefix}.attention.qkv.weight'] = torch.cat([q_w, k_w, v_w])
+        
+        q_b = original_model[f'{orig_prefix}.self_attn.q_proj.bias']
+        k_b = original_model[f'{orig_prefix}.self_attn.k_proj.bias']
+        v_b = original_model[f'{orig_prefix}.self_attn.v_proj.bias']
+        clip_converted[f'{layer_prefix}.attention.qkv.bias'] = torch.cat([q_b, k_b, v_b])
+        
+        clip_converted[f'{layer_prefix}.attention.wo.weight'] = original_model[f'{orig_prefix}.self_attn.out_proj.weight']
+
+        clip_converted[f'{layer_prefix}.attention.wo.bias'] = original_model[f'{orig_prefix}.self_attn.out_proj.bias']
         
         clip_converted[f'{layer_prefix}.attention.wo.weight'] = original_model[f'{orig_prefix}.self_attn.out_proj.weight']
 
@@ -93,6 +100,12 @@ def load_from_standard_weights(input_file, device):
     enc['layers.13.attention.qkv.weight'] = torch.cat([q_w, k_w, v_w])
     enc['layers.13.attention.wo.weight'] = original_model[f'{o_enc}.mid.attn_1.proj_out.weight'].squeeze()
 
+    q_b = original_model[f'{o_enc}.mid.attn_1.q.bias']
+    k_b = original_model[f'{o_enc}.mid.attn_1.k.bias']
+    v_b = original_model[f'{o_enc}.mid.attn_1.v.bias']
+    enc['layers.13.attention.qkv.bias'] = torch.cat([q_b, k_b, v_b])
+    enc['layers.13.attention.wo.bias'] = original_model[f'{o_enc}.mid.attn_1.proj_out.bias']
+
     map_vae_residual_block(enc, 'layers.14', f'{o_enc}.mid.block_2', original_model)
 
     # Final Layers - FIXED: Correctly map layers 15, 17, and 18, skipping 16 (SiLU)
@@ -102,7 +115,6 @@ def load_from_standard_weights(input_file, device):
     enc['layers.17.weight'] = original_model[f'{o_enc}.conv_out.weight']
     enc['layers.17.bias'] = original_model[f'{o_enc}.conv_out.bias']
 
-    # Quantizer
     enc['layers.18.weight'] = original_model['first_stage_model.quant_conv.weight']
     enc['layers.18.bias'] = original_model['first_stage_model.quant_conv.bias']
 
@@ -128,6 +140,11 @@ def load_from_standard_weights(input_file, device):
     v_w = original_model[f'{o_dec}.mid.attn_1.v.weight'].squeeze()
     dec['layers.3.attention.qkv.weight'] = torch.cat([q_w, k_w, v_w])
     dec['layers.3.attention.wo.weight'] = original_model[f'{o_dec}.mid.attn_1.proj_out.weight'].squeeze()
+    q_b = original_model[f'{o_dec}.mid.attn_1.q.bias']
+    k_b = original_model[f'{o_dec}.mid.attn_1.k.bias']
+    v_b = original_model[f'{o_dec}.mid.attn_1.v.bias']
+    dec['layers.3.attention.qkv.bias'] = torch.cat([q_b, k_b, v_b])
+    dec['layers.3.attention.wo.bias'] = original_model[f'{o_dec}.mid.attn_1.proj_out.bias']
     map_vae_residual_block(dec, 'layers.4', f'{o_dec}.mid.block_2', original_model)
 
     # Up Block 1 (Corresponds to original's up.3)
@@ -234,7 +251,7 @@ def load_from_standard_weights(input_file, device):
             diff[f'{attn_prefix}.conv_out.weight'] = original_model[f'{orig_attn_prefix}.proj_out.weight']
             diff[f'{attn_prefix}.conv_out.bias'] = original_model[f'{orig_attn_prefix}.proj_out.bias']
 
-    downsample_map = {3: 3, 6: 6, 9: 9} # Note: original script had 9:9 but your encoder has 10,11. Assuming this is for input_blocks 3, 6, 9.
+    downsample_map = {3: 3, 6: 6, 9: 9} 
     for i, b in downsample_map.items():
         diff[f'unet.encoders.{i}.0.weight'] = original_model[f'{o_diff}.input_blocks.{b}.0.op.weight']
         diff[f'unet.encoders.{i}.0.bias'] = original_model[f'{o_diff}.input_blocks.{b}.0.op.bias']
@@ -356,7 +373,7 @@ def load_from_standard_weights(input_file, device):
             diff[f'{attn_prefix}.conv_out.bias'] = original_model[f'{orig_attn_prefix}.proj_out.bias']
     
         # --- Conditionally Map Upsample Block (sub-module 2) ---
-        # The upsampler has a different key depending on whether an attention block exists
+
         upsample_sub_idx = 2 if f'{o_diff}.output_blocks.{b}.1.norm.weight' in original_model else 1
         orig_upsample_prefix = f'{o_diff}.output_blocks.{b}.{upsample_sub_idx}'
         if f'{orig_upsample_prefix}.conv.weight' in original_model:
